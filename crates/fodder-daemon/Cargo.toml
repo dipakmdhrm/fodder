@@ -1,0 +1,20 @@
+[package]
+name = "fodder-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Headless background feed poller for the Fodder feed reader"
+
+[dependencies]
+fodder-core.workspace = true
+zbus = "5"
+ksni = "0.2"
+notify-rust = { version = "4", default-features = false, features = ["z"] }
+log.workspace = true
+env_logger = "0.11"
+
+[dev-dependencies]
+tempfile.workspace = true
+tiny_http.workspace = true

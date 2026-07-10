@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use crate::{Error, Result};
 
+pub use ureq::Agent;
+
 const MAX_REDIRECTS: usize = 5;
 const MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
 

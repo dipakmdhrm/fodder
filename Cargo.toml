@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fodder-core"]
+members = ["crates/fodder-core", "crates/fodder-daemon"]
 
 [workspace.package]
 version = "0.1.0"
