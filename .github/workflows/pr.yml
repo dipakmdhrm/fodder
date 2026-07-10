@@ -1,0 +1,114 @@
+name: PR
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev dbus dbus-x11
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # dbus-run-session gives the daemon integration test a private bus.
+      - run: dbus-run-session -- cargo test --workspace
+
+  package-deb:
+    name: package-deb
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl ca-certificates git build-essential pkg-config \
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-deb --locked
+      - run: cargo build --release --workspace
+      - run: cargo deb -p fodder-gtk --no-build
+      - name: Test install and run
+        run: |
+          apt-get install -y ./target/debian/fodder_*.deb
+          fodder --version
+          fodder-daemon --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fodder-deb
+          path: target/debian/*.deb
+
+  package-rpm:
+    name: package-rpm
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install system dependencies
+        run: |
+          dnf install -y gcc git gtk4-devel libadwaita-devel webkitgtk6.0-devel \
+            rust cargo
+      - uses: actions/checkout@v4
+      - run: cargo install cargo-generate-rpm --locked
+      - run: cargo build --release --workspace
+      - run: ~/.cargo/bin/cargo-generate-rpm -p crates/fodder-gtk
+      - name: Test install and run
+        run: |
+          dnf install -y ./target/generate-rpm/fodder-*.rpm
+          fodder --version
+          fodder-daemon --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fodder-rpm
+          path: target/generate-rpm/*.rpm
+
+  package-arch:
+    name: package-arch
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - name: Install system dependencies
+        run: pacman -Syu --noconfirm git rust gtk4 libadwaita webkitgtk-6.0
+      - uses: actions/checkout@v4
+      - name: Build package (makepkg refuses to run as root)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
+          git archive --format=tar.gz --prefix="fodder-$VERSION/" \
+            -o "packaging/arch/fodder-$VERSION.tar.gz" HEAD
+          useradd -m builder
+          chown -R builder packaging/arch
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg -f --noconfirm"
+      - name: Test install and run
+        run: |
+          pacman -U --noconfirm packaging/arch/fodder-*.pkg.tar.zst
+          fodder --version
+          fodder-daemon --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fodder-arch
+          path: packaging/arch/*.pkg.tar.zst

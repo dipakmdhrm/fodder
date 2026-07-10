@@ -1,0 +1,82 @@
+name: release
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deb:
+    name: release-deb
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl ca-certificates git build-essential pkg-config \
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-deb --locked
+      - run: cargo build --release --workspace
+      - run: cargo deb -p fodder-gtk --no-build
+      - name: Smoke install
+        run: |
+          apt-get install -y ./target/debian/fodder_*.deb
+          fodder --version && fodder-daemon --version
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: target/debian/*.deb
+
+  rpm:
+    name: release-rpm
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install system dependencies
+        run: |
+          dnf install -y gcc git gtk4-devel libadwaita-devel webkitgtk6.0-devel \
+            rust cargo
+      - uses: actions/checkout@v4
+      - run: cargo install cargo-generate-rpm --locked
+      - run: cargo build --release --workspace
+      - run: ~/.cargo/bin/cargo-generate-rpm -p crates/fodder-gtk
+      - name: Smoke install
+        run: |
+          dnf install -y ./target/generate-rpm/fodder-*.rpm
+          fodder --version && fodder-daemon --version
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: target/generate-rpm/*.rpm
+
+  arch:
+    name: release-arch
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - name: Install system dependencies
+        run: pacman -Syu --noconfirm git rust gtk4 libadwaita webkitgtk-6.0
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
+          git archive --format=tar.gz --prefix="fodder-$VERSION/" \
+            -o "packaging/arch/fodder-$VERSION.tar.gz" HEAD
+          useradd -m builder
+          chown -R builder packaging/arch
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg -f --noconfirm"
+      - name: Smoke install
+        run: |
+          pacman -U --noconfirm packaging/arch/fodder-*.pkg.tar.zst
+          fodder --version && fodder-daemon --version
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/arch/*.pkg.tar.zst
