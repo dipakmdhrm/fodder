@@ -43,6 +43,10 @@ impl DaemonClient {
         self.call("PollNow");
     }
 
+    pub fn settings_changed(&self) {
+        self.call("SettingsChanged");
+    }
+
     pub fn quit_daemon(&self) {
         self.call("Quit");
     }

@@ -309,6 +309,31 @@ pub fn build(app: &adw::Application) {
         }
     ));
 
+    let preferences = gio::SimpleAction::new("preferences", None);
+    preferences.connect_activate(glib::clone!(
+        #[weak]
+        ui,
+        move |_, _| crate::settings_dialog::show(&ui)
+    ));
+    app.add_action(&preferences);
+    let about = gio::SimpleAction::new("about", None);
+    about.connect_activate(glib::clone!(
+        #[weak]
+        window,
+        move |_, _| {
+            adw::AboutDialog::builder()
+                .application_name("Fodder")
+                .application_icon("io.github.dipakmdhrm.Fodder")
+                .version(env!("CARGO_PKG_VERSION"))
+                .website("https://github.com/dipakmdhrm/fodder")
+                .license_type(gtk::License::Gpl30)
+                .comments("A resource-frugal feed reader")
+                .build()
+                .present(Some(&window));
+        }
+    ));
+    app.add_action(&about);
+
     refresh_feeds(&ui);
     ui.article.clear();
     window.present();

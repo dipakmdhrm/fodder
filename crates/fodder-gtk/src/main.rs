@@ -1,6 +1,7 @@
 mod article_view;
 mod daemon_client;
 mod render;
+mod settings_dialog;
 mod window;
 
 use gtk4 as gtk;
