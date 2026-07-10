@@ -47,3 +47,8 @@ Run tests with `cargo test --workspace`.
 GTK 4.14+, libadwaita 1.5+, webkitgtk-6.0 (Ubuntu 24.04+, Debian 12+, Fedora 40+, Arch).
 A D-Bus session bus is expected (notifications, tray, viewer↔daemon coordination);
 without one, polling still works and the viewer refreshes from the database directly.
+
+## Packaging
+
+CI builds and test-installs `.deb` (Ubuntu), `.rpm` (Fedora), and pacman
+(Arch) packages on every PR; releases attach all three.
