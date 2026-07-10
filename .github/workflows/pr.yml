@@ -14,7 +14,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -30,7 +30,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev dbus dbus-x11
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev libdbus-1-dev dbus dbus-x11
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # dbus-run-session gives the daemon integration test a private bus.
@@ -45,7 +45,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y curl ca-certificates git build-essential pkg-config \
-            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev libdbus-1-dev
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -69,7 +69,7 @@ jobs:
     steps:
       - name: Install system dependencies
         run: |
-          dnf install -y gcc git gtk4-devel libadwaita-devel webkitgtk6.0-devel \
+          dnf install -y gcc git gtk4-devel libadwaita-devel webkitgtk6.0-devel dbus-devel \
             rust cargo
       - uses: actions/checkout@v4
       - run: cargo install cargo-generate-rpm --locked
@@ -91,7 +91,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install system dependencies
-        run: pacman -Syu --noconfirm git rust gtk4 libadwaita webkitgtk-6.0
+        run: pacman -Syu --noconfirm git rust dbus gtk4 libadwaita webkitgtk-6.0
       - uses: actions/checkout@v4
       - name: Build package (makepkg refuses to run as root)
         run: |
