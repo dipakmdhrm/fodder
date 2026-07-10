@@ -1,20 +1,25 @@
-//! Article pane. Phase 3 placeholder: plain-text rendering of the HTML body.
-//! Phase 4 replaces this with the sanitized native renderer; Phase 5 adds the
-//! WebKit toggle.
+//! Article pane: native sanitized-HTML rendering (default). The WebKit
+//! toggle (Phase 5) mounts alongside this in a stack.
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use gtk4 as gtk;
 
+use gtk::glib;
 use gtk::prelude::*;
 
 use fodder_core::models::Item;
+
+use crate::render::{ir, textview};
 
 pub struct ArticleView {
     pub root: gtk::Widget,
     title: gtk::Label,
     meta: gtk::Label,
     body: gtk::TextView,
-    placeholder: gtk::Label,
     stack: gtk::Stack,
+    rendered: Rc<RefCell<textview::Rendered>>,
 }
 
 impl ArticleView {
@@ -34,10 +39,13 @@ impl ArticleView {
             .editable(false)
             .cursor_visible(false)
             .wrap_mode(gtk::WrapMode::WordChar)
-            .left_margin(2)
-            .right_margin(2)
+            .pixels_above_lines(2)
+            .pixels_below_lines(2)
             .top_margin(12)
             .build();
+
+        let rendered = Rc::new(RefCell::new(textview::Rendered::empty()));
+        attach_link_handlers(&body, &rendered);
 
         let content = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -71,27 +79,81 @@ impl ArticleView {
             title,
             meta,
             body,
-            placeholder,
             stack,
+            rendered,
         }
     }
 
     pub fn clear(&self) {
         self.stack.set_visible_child_name("empty");
-        self.placeholder.set_visible(true);
+        self.rendered.borrow_mut().clear(&self.body.buffer());
     }
 
     pub fn show(&self, item: &Item, feed_title: &str) {
         self.title.set_text(&item.title);
         self.meta.set_text(&format_meta(item, feed_title));
-        let text = item
-            .content_html
-            .as_deref()
-            .map(strip_tags)
-            .unwrap_or_default();
-        self.body.buffer().set_text(text.trim());
+        let blocks = ir::html_to_blocks(
+            item.content_html.as_deref().unwrap_or(""),
+            item.link.as_deref(),
+        );
+        textview::render(&self.body, &blocks, &mut self.rendered.borrow_mut());
         self.stack.set_visible_child_name("article");
     }
+}
+
+fn attach_link_handlers(view: &gtk::TextView, rendered: &Rc<RefCell<textview::Rendered>>) {
+    let link_at =
+        |view: &gtk::TextView, rendered: &Rc<RefCell<textview::Rendered>>, x: f64, y: f64| {
+            let (bx, by) =
+                view.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
+            let iter = view.iter_at_location(bx, by)?;
+            let rendered = rendered.borrow();
+            iter.tags().iter().find_map(|tag| {
+                rendered
+                    .links
+                    .iter()
+                    .find(|(t, _)| t == tag)
+                    .map(|(_, url)| url.clone())
+            })
+        };
+
+    let click = gtk::GestureClick::new();
+    click.connect_released(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        rendered,
+        move |_, n, x, y| {
+            if n != 1 {
+                return;
+            }
+            if let Some(url) = link_at(&view, &rendered, x, y) {
+                gtk::UriLauncher::new(&url).launch(
+                    None::<&gtk::Window>,
+                    None::<&gtk::gio::Cancellable>,
+                    |result| {
+                        if let Err(e) = result {
+                            log::warn!("could not open link: {e}");
+                        }
+                    },
+                );
+            }
+        }
+    ));
+    view.add_controller(click);
+
+    let motion = gtk::EventControllerMotion::new();
+    motion.connect_motion(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        rendered,
+        move |_, x, y| {
+            let over_link = link_at(&view, &rendered, x, y).is_some();
+            view.set_cursor_from_name(Some(if over_link { "pointer" } else { "text" }));
+        }
+    ));
+    view.add_controller(motion);
 }
 
 fn format_meta(item: &Item, feed_title: &str) -> String {
@@ -105,24 +167,4 @@ fn format_meta(item: &Item, feed_title: &str) -> String {
         }
     }
     parts.join("  ·  ")
-}
-
-/// Crude placeholder until the Phase 4 renderer lands.
-fn strip_tags(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for c in html.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            c if !in_tag => out.push(c),
-            _ => {}
-        }
-    }
-    out.replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&nbsp;", " ")
 }

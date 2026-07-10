@@ -35,6 +35,22 @@ pub fn agent() -> ureq::Agent {
         .build()
 }
 
+/// Simple capped download (article images, favicons). Follows redirects.
+pub fn fetch_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .user_agent(concat!("fodder/", env!("CARGO_PKG_VERSION")))
+        .build();
+    let resp = agent
+        .get(url)
+        .call()
+        .map_err(|e| Error::Http(e.to_string()))?;
+    let mut body = Vec::new();
+    resp.into_reader().take(max_bytes).read_to_end(&mut body)?;
+    Ok(body)
+}
+
 pub fn fetch_feed(
     agent: &ureq::Agent,
     url: &str,
