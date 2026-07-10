@@ -1,0 +1,24 @@
+[package]
+name = "fodder-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Shared core library for the Fodder feed reader (DB, fetching, parsing, scheduling)"
+
+[dependencies]
+rusqlite.workspace = true
+feed-rs.workspace = true
+ureq.workspace = true
+url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+log.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tiny_http.workspace = true
