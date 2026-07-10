@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Fodder
+GenericName=Feed Reader
+Comment=Read RSS and Atom feeds
+Exec=fodder
+Icon=io.github.dipakmdhrm.Fodder
+Terminal=false
+Type=Application
+Categories=Network;News;GTK;
+Keywords=rss;atom;feed;reader;news;
+StartupNotify=true

@@ -11,6 +11,44 @@ description = "GTK4/libadwaita viewer for the Fodder feed reader"
 name = "fodder"
 path = "src/main.rs"
 
+# Packages ship BOTH binaries; build the whole workspace in release first
+# (cargo build --release --workspace), then `cargo deb -p fodder-gtk --no-build`
+# or `cargo generate-rpm -p crates/fodder-gtk`.
+[package.metadata.deb]
+name = "fodder"
+maintainer = "Dipak Yadav <dipakmdhrm@gmail.com>"
+copyright = "2026 Dipak Yadav"
+license-file = ["../../LICENSE", "0"]
+section = "net"
+priority = "optional"
+depends = "$auto"
+extended-description = """
+A resource-frugal RSS/Atom feed reader for Linux built with GTK4 and
+libadwaita. A separate lightweight daemon polls feeds in the background,
+so the UI consumes no resources while closed."""
+assets = [
+    ["target/release/fodder", "usr/bin/", "755"],
+    ["target/release/fodder-daemon", "usr/bin/", "755"],
+    ["../../packaging/fodder.desktop", "usr/share/applications/io.github.dipakmdhrm.Fodder.desktop", "644"],
+    ["../../packaging/icons/io.github.dipakmdhrm.Fodder.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../README.md", "usr/share/doc/fodder/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "fodder"
+summary = "Resource-frugal GTK4 RSS/Atom feed reader"
+assets = [
+    { source = "target/release/fodder", dest = "/usr/bin/fodder", mode = "755" },
+    { source = "target/release/fodder-daemon", dest = "/usr/bin/fodder-daemon", mode = "755" },
+    { source = "packaging/fodder.desktop", dest = "/usr/share/applications/io.github.dipakmdhrm.Fodder.desktop", mode = "644" },
+    { source = "packaging/icons/io.github.dipakmdhrm.Fodder.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+gtk4 = "*"
+libadwaita = "*"
+"webkitgtk6.0" = "*"
+
 [dependencies]
 fodder-core.workspace = true
 gtk4 = { version = "0.9", features = ["v4_14"] }

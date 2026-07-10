@@ -1,0 +1,37 @@
+# Maintainer: Dipak Yadav <dipakmdhrm@gmail.com>
+# pkgver is kept in sync with the workspace Cargo.toml by CI (sed) before
+# makepkg runs; the source tarball is produced with `git archive`.
+pkgname=fodder
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Resource-frugal GTK4 RSS/Atom feed reader"
+arch=('x86_64')
+url="https://github.com/dipakmdhrm/fodder"
+license=('GPL-3.0-or-later')
+depends=(gtk4 libadwaita webkitgtk-6.0)
+makedepends=(rust)
+source=("$pkgname-$pkgver.tar.gz")
+b2sums=('SKIP')
+
+build() {
+    cd "$pkgname-$pkgver"
+    export CARGO_HOME="$srcdir/cargo-home"
+    cargo build --release --workspace
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    export CARGO_HOME="$srcdir/cargo-home"
+    cargo test --release -p fodder-core
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 target/release/fodder "$pkgdir/usr/bin/fodder"
+    install -Dm755 target/release/fodder-daemon "$pkgdir/usr/bin/fodder-daemon"
+    install -Dm644 packaging/fodder.desktop \
+        "$pkgdir/usr/share/applications/io.github.dipakmdhrm.Fodder.desktop"
+    install -Dm644 packaging/icons/io.github.dipakmdhrm.Fodder.svg \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
