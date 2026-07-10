@@ -48,6 +48,7 @@ assets = [
 gtk4 = "*"
 libadwaita = "*"
 "webkitgtk6.0" = "*"
+dbus-libs = "*"
 
 [dependencies]
 fodder-core.workspace = true

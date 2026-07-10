@@ -8,10 +8,13 @@ pkgdesc="Resource-frugal GTK4 RSS/Atom feed reader"
 arch=('x86_64')
 url="https://github.com/dipakmdhrm/fodder"
 license=('GPL-3.0-or-later')
-depends=(gtk4 libadwaita webkitgtk-6.0)
+depends=(dbus gtk4 libadwaita webkitgtk-6.0)
 makedepends=(rust)
 source=("$pkgname-$pkgver.tar.gz")
 b2sums=('SKIP')
+# makepkg's default LTO produces GCC bitcode objects that Rust's lld cannot
+# link against the bundled C deps (sqlite3, ring).
+options=(!lto)
 
 build() {
     cd "$pkgname-$pkgver"
