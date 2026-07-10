@@ -27,7 +27,7 @@ pub struct Ui {
     pub item_store: gio::ListStore,
     pub item_selection: gtk::SingleSelection,
     pub items_page: adw::NavigationPage,
-    pub article: ArticleView,
+    pub article: Rc<ArticleView>,
     pub selected_feed_id: Cell<Option<i64>>,
     pub showing_item_id: Cell<Option<i64>>,
     pub open_browser_button: gtk::Button,
@@ -126,6 +126,7 @@ pub fn build(app: &adw::Application) {
         .build();
     let article_header = adw::HeaderBar::new();
     article_header.pack_end(&open_browser_button);
+    article_header.pack_end(&article.web_toggle);
     let article_view_tb = adw::ToolbarView::new();
     article_view_tb.add_top_bar(&article_header);
     article_view_tb.set_content(Some(&article.root));

@@ -15,6 +15,7 @@ path = "src/main.rs"
 fodder-core.workspace = true
 gtk4 = { version = "0.9", features = ["v4_14"] }
 libadwaita = { version = "0.7", features = ["v1_5"] }
+webkit6 = "0.4"
 async-channel = "2"
 ammonia = "4"
 html5ever = "0.27"
