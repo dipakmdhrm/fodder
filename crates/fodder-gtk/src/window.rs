@@ -290,11 +290,11 @@ pub fn build(app: &adw::Application) {
     ));
 
     // Close: take the daemon down with us unless running in background.
+    // Deliberately a STRONG capture — this is the anchor that keeps the Ui
+    // (and every weak handler above) alive for the window's lifetime.
     window.connect_close_request(glib::clone!(
-        #[weak]
+        #[strong]
         ui,
-        #[upgrade_or]
-        glib::Propagation::Proceed,
         move |_| {
             let run_in_background = ui
                 .db
