@@ -1,13 +1,29 @@
 name: release
+# Bot-published releases (release-please with GITHUB_TOKEN) do not emit a
+# `release` event that triggers workflows, so release-please.yml CALLS this
+# workflow directly. The dispatch trigger allows manual re-runs for a tag;
+# the release trigger still covers manually-published releases.
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to build and upload assets for (e.g. v0.1.0)"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag_name || github.event.release.tag_name }}
 
 jobs:
   deb:
@@ -21,6 +37,8 @@ jobs:
           apt-get install -y curl ca-certificates git build-essential pkg-config \
             libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev libdbus-1-dev
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.event.release.tag_name }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-deb --locked
@@ -32,6 +50,7 @@ jobs:
           fodder --version && fodder-daemon --version
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.event.release.tag_name }}
           files: target/debian/*.deb
 
   rpm:
@@ -44,6 +63,8 @@ jobs:
           dnf install -y gcc git gtk4-devel libadwaita-devel webkitgtk6.0-devel dbus-devel \
             rust cargo
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.event.release.tag_name }}
       - run: cargo install cargo-generate-rpm --locked
       - run: cargo build --release --workspace
       - run: ~/.cargo/bin/cargo-generate-rpm -p crates/fodder-gtk
@@ -53,6 +74,7 @@ jobs:
           fodder --version && fodder-daemon --version
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.event.release.tag_name }}
           files: target/generate-rpm/*.rpm
 
   arch:
@@ -63,6 +85,8 @@ jobs:
       - name: Install system dependencies
         run: pacman -Syu --noconfirm git rust dbus gtk4 libadwaita webkitgtk-6.0
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.event.release.tag_name }}
       - name: Build package
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -79,4 +103,5 @@ jobs:
           fodder --version && fodder-daemon --version
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.event.release.tag_name }}
           files: packaging/arch/*.pkg.tar.zst
