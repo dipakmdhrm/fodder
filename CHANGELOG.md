@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1](https://github.com/dipakmdhrm/fodder/compare/v0.1.0...v0.1.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* **ci:** bot-published releases never triggered the package workflow ([#6](https://github.com/dipakmdhrm/fodder/issues/6)) ([f137f97](https://github.com/dipakmdhrm/fodder/commit/f137f9701d12a60428c27ffa15e7d6f7fa5c9559))
+* **ci:** inline release-asset upload — tag checkouts predate helper scripts ([#9](https://github.com/dipakmdhrm/fodder/issues/9)) ([822da8b](https://github.com/dipakmdhrm/fodder/commit/822da8b380689f06ca10c9888ae40104610f0f67))
+* **ci:** upload release assets via uploads API directly ([#8](https://github.com/dipakmdhrm/fodder/issues/8)) ([0cfaa1b](https://github.com/dipakmdhrm/fodder/commit/0cfaa1bf398ef3bcd6fc5d462d2c45aa78b9376b))
+
 ## 0.1.0 (2026-07-20)
 
 
