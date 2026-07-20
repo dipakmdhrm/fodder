@@ -48,10 +48,27 @@ jobs:
         run: |
           apt-get install -y ./target/debian/fodder_*.deb
           fodder --version && fodder-daemon --version
-      - name: Upload release assets
+      - name: Upload release assets  # inline - the checked-out tag may predate helper scripts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: .github/upload-release-assets.sh target/debian/*.deb
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          release=$(curl -sf -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/tags/${RELEASE_TAG}")
+          release_id=$(jq -r .id <<<"$release")
+          for file in target/debian/*.deb; do
+            name=$(basename "$file")
+            existing=$(jq -r ".assets[] | select(.name == \"$name\") | .id" <<<"$release")
+            if [ -n "$existing" ]; then
+              echo "replacing existing asset $name (id $existing)"
+              curl -sf -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/assets/$existing"
+            fi
+            echo "uploading $name"
+            curl -sf -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$file" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${name}" >/dev/null
+          done
 
   rpm:
     name: release-rpm
@@ -72,10 +89,27 @@ jobs:
         run: |
           dnf install -y ./target/generate-rpm/fodder-*.rpm
           fodder --version && fodder-daemon --version
-      - name: Upload release assets
+      - name: Upload release assets  # inline - the checked-out tag may predate helper scripts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: .github/upload-release-assets.sh target/generate-rpm/*.rpm
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          release=$(curl -sf -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/tags/${RELEASE_TAG}")
+          release_id=$(jq -r .id <<<"$release")
+          for file in target/generate-rpm/*.rpm; do
+            name=$(basename "$file")
+            existing=$(jq -r ".assets[] | select(.name == \"$name\") | .id" <<<"$release")
+            if [ -n "$existing" ]; then
+              echo "replacing existing asset $name (id $existing)"
+              curl -sf -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/assets/$existing"
+            fi
+            echo "uploading $name"
+            curl -sf -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$file" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${name}" >/dev/null
+          done
 
   arch:
     name: release-arch
@@ -101,7 +135,24 @@ jobs:
         run: |
           pacman -U --noconfirm packaging/arch/fodder-*.pkg.tar.zst
           fodder --version && fodder-daemon --version
-      - name: Upload release assets
+      - name: Upload release assets  # inline - the checked-out tag may predate helper scripts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: .github/upload-release-assets.sh packaging/arch/*.pkg.tar.zst
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          release=$(curl -sf -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/tags/${RELEASE_TAG}")
+          release_id=$(jq -r .id <<<"$release")
+          for file in packaging/arch/*.pkg.tar.zst; do
+            name=$(basename "$file")
+            existing=$(jq -r ".assets[] | select(.name == \"$name\") | .id" <<<"$release")
+            if [ -n "$existing" ]; then
+              echo "replacing existing asset $name (id $existing)"
+              curl -sf -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api/releases/assets/$existing"
+            fi
+            echo "uploading $name"
+            curl -sf -X POST -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$file" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${name}" >/dev/null
+          done
