@@ -581,26 +581,15 @@ fn add_feed_dialog(ui: &Rc<Ui>) {
     dialog.present(Some(&ui.window));
 }
 
-/// Validate by fetching+parsing off the main thread, then store everything
-/// from that same response so the feed appears populated immediately.
+/// Validate by fetching+parsing off the main thread (following HTML feed
+/// autodiscovery when the URL is a web page, e.g. a blog homepage), then
+/// store everything from that same response so the feed appears populated
+/// immediately.
 fn subscribe(ui: &Rc<Ui>, url: String) {
     let (tx, rx) = async_channel::bounded(1);
-    let fetch_url = url.clone();
     std::thread::spawn(move || {
         let agent = fodder_core::fetch::agent();
-        let result =
-            fodder_core::fetch::fetch_feed(&agent, &fetch_url, None, None).and_then(|outcome| {
-                match outcome {
-                    fodder_core::fetch::FetchOutcome::Fetched(fetched) => {
-                        let parsed = fodder_core::parse::parse_feed(&fetched.body)?;
-                        Ok((parsed, fetched.etag, fetched.last_modified))
-                    }
-                    fodder_core::fetch::FetchOutcome::NotModified => {
-                        Err(fodder_core::Error::Http("empty 304 response".into()))
-                    }
-                }
-            });
-        let _ = tx.send_blocking(result);
+        let _ = tx.send_blocking(crate::discover::resolve_subscription(&agent, &url));
     });
     glib::spawn_future_local(glib::clone!(
         #[weak]
@@ -608,7 +597,12 @@ fn subscribe(ui: &Rc<Ui>, url: String) {
         async move {
             let Ok(result) = rx.recv().await else { return };
             match result {
-                Ok((parsed, etag, last_modified)) => {
+                Ok(crate::discover::Subscription {
+                    parsed,
+                    etag,
+                    last_modified,
+                    url,
+                }) => {
                     let outcome = {
                         let mut db = ui.db.borrow_mut();
                         let now = now_unix();
