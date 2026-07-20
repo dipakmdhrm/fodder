@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/fodder-core", "crates/fodder-daemon", "crates/fodder-gtk"]
 
 [workspace.package]
-version = "0.1.0" # x-release-please-version
+version = "0.1.1" # x-release-please-version
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/dipakmdhrm/fodder"
