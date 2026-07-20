@@ -1,5 +1,6 @@
 mod article_view;
 mod daemon_client;
+mod discover;
 mod render;
 mod settings_dialog;
 mod window;
