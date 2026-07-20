@@ -34,7 +34,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y curl ca-certificates git build-essential pkg-config \
+          apt-get install -y curl jq ca-certificates git build-essential pkg-config \
             libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev libdbus-1-dev
       - uses: actions/checkout@v4
         with:
@@ -48,10 +48,10 @@ jobs:
         run: |
           apt-get install -y ./target/debian/fodder_*.deb
           fodder --version && fodder-daemon --version
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag_name || github.event.release.tag_name }}
-          files: target/debian/*.deb
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .github/upload-release-assets.sh target/debian/*.deb
 
   rpm:
     name: release-rpm
@@ -60,8 +60,8 @@ jobs:
     steps:
       - name: Install system dependencies
         run: |
-          dnf install -y gcc git gtk4-devel libadwaita-devel webkitgtk6.0-devel dbus-devel \
-            rust cargo
+          dnf install -y gcc git curl jq gtk4-devel libadwaita-devel webkitgtk6.0-devel \
+            dbus-devel rust cargo
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name || github.event.release.tag_name }}
@@ -72,10 +72,10 @@ jobs:
         run: |
           dnf install -y ./target/generate-rpm/fodder-*.rpm
           fodder --version && fodder-daemon --version
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag_name || github.event.release.tag_name }}
-          files: target/generate-rpm/*.rpm
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .github/upload-release-assets.sh target/generate-rpm/*.rpm
 
   arch:
     name: release-arch
@@ -83,7 +83,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install system dependencies
-        run: pacman -Syu --noconfirm git rust dbus gtk4 libadwaita webkitgtk-6.0
+        run: pacman -Syu --noconfirm git curl jq rust dbus gtk4 libadwaita webkitgtk-6.0
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name || github.event.release.tag_name }}
@@ -101,7 +101,7 @@ jobs:
         run: |
           pacman -U --noconfirm packaging/arch/fodder-*.pkg.tar.zst
           fodder --version && fodder-daemon --version
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag_name || github.event.release.tag_name }}
-          files: packaging/arch/*.pkg.tar.zst
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .github/upload-release-assets.sh packaging/arch/*.pkg.tar.zst
