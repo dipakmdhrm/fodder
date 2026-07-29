@@ -276,10 +276,13 @@ jobs:
           done
           # Sign the generated Release file ourselves: InRelease (inline) and
           # Release.gpg (detached), which is what apt clients fetch.
+          # --passphrase '' + loopback: the key is passphrase-less, but in
+          # batch mode gpg still needs an explicit passphrase source or it
+          # errors with "we are in batchmode - can't get input".
           rel="dists/stable/Release"
-          gpg --batch --yes --pinentry-mode loopback --local-user "$FPR" \
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$FPR" \
             --clearsign -o "dists/stable/InRelease" "$rel"
-          gpg --batch --yes --pinentry-mode loopback --local-user "$FPR" \
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$FPR" \
             -abs -o "dists/stable/Release.gpg" "$rel"
 
       - name: Assemble flatpak repository
