@@ -7,10 +7,10 @@ Homepage: https://github.com/dipakmdhrm/fodder
 Priority: optional
 Section: net
 Filename: pool/main/f/fodder/fodder_0.1.0_amd64.deb
-Size: 8620622
-SHA256: f23af83acf4ef6fd3542ba0d9e112445bb9b019ca97ec73ffd82819fb61cefa5
-SHA1: 4fce5301d8101263c89dbc59540aa6077709250c
-MD5sum: 11856aedcccc4696e9a2a0d3d1e83432
+Size: 8620448
+SHA256: 42b7f7a34faf7551137cd0c24e5c66755e346604fa114a22e2170c8f116280be
+SHA1: 9dc91ec8ea5112539a18fdd4dcf6d093482a370a
+MD5sum: c66029a7204c57008061a147b7bb1ac0
 Description: Lightweight RSS/Atom/JSON feed reader
  Fodder is a frugal feed reader for the Linux desktop: a headless daemon
  (fodderd) polls feeds and sends notifications, and a GTK4 + libadwaita viewer
