@@ -695,7 +695,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "fodder"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "fodder-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "fodderd"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "chrono",
