@@ -26,6 +26,12 @@ build() {
     cd "${srcdir}/${pkgname}-${pkgver}"
     export CARGO_TARGET_DIR=target
     export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+    # Link with GNU ld (bfd), the linker the deb/rpm builds use successfully.
+    # Arch's makepkg links with lld (-fuse-ld=lld), which under --gc-sections
+    # drops the static C/asm objects of ring (and would sqlite too), producing
+    # "undefined symbol: ring_core_*". A later -fuse-ld= wins, so this overrides
+    # makepkg's lld. (binutils/ld.bfd comes from base-devel.)
+    export RUSTFLAGS="${RUSTFLAGS} -Clink-arg=-fuse-ld=bfd"
     # Not --locked: prepare() edits Cargo.toml (drops a dependency feature),
     # which would otherwise be reported as an out-of-date lockfile.
     cargo build --release --workspace
