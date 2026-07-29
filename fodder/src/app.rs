@@ -48,6 +48,8 @@ pub struct App {
     webkit_toggle: gtk::ToggleButton,
     webkit_holder: gtk::Box,
     webview: RefCell<Option<webkit6::WebView>>,
+    web_back: gtk::Button,
+    web_forward: gtk::Button,
 
     // Row → id maps, parallel to the list rows.
     feed_ids: RefCell<Vec<Option<i64>>>,
@@ -225,16 +227,25 @@ fn assemble(
     let reader_stack = gtk::Stack::new();
     reader_stack.add_named(&reader_scroll, Some("content"));
     reader_stack.add_named(&webkit_holder, Some("webkit"));
+    reader_stack.add_named(&centered_spinner(), Some("webloading"));
     reader_stack.add_named(&status_page("emblem-documents-symbolic", "Select an article", "Choose an article from the list to read it here."), Some("empty"));
     reader_stack.add_named(&reader_error, Some("error"));
     reader_stack.set_visible_child_name("empty");
 
+    // Back/forward for in-view navigation; only shown in web mode.
+    let web_back = icon_button("go-previous-symbolic", "Back");
+    let web_forward = icon_button("go-next-symbolic", "Forward");
+    web_back.set_visible(false);
+    web_forward.set_visible(false);
+
     let webkit_toggle = gtk::ToggleButton::new();
     webkit_toggle.set_icon_name("globe-symbolic");
-    webkit_toggle.set_tooltip_text(Some("Full web view (JavaScript disabled)"));
+    webkit_toggle.set_tooltip_text(Some("Full web page (loads the live site; JavaScript off)"));
     let open_btn = icon_button(browser_icon_name(), "Open in browser");
     let reader_header = adw::HeaderBar::new();
     reader_header.set_title_widget(Some(&adw::WindowTitle::new("Reader", "")));
+    reader_header.pack_start(&web_back);
+    reader_header.pack_start(&web_forward);
     reader_header.pack_end(&open_btn);
     reader_header.pack_end(&webkit_toggle);
     let reader_pane = adw::ToolbarView::new();
@@ -276,6 +287,8 @@ fn assemble(
         webkit_toggle: webkit_toggle.clone(),
         webkit_holder,
         webview: RefCell::new(None),
+        web_back: web_back.clone(),
+        web_forward: web_forward.clone(),
         feed_ids: RefCell::new(Vec::new()),
         article_ids: RefCell::new(Vec::new()),
         article_titles: RefCell::new(Vec::new()),
@@ -294,6 +307,21 @@ fn assemble(
         &this, &add_btn, &remove_btn, &refresh_btn, &mark_all_btn, &open_btn, &prefs_btn,
         &webkit_toggle,
     );
+
+    // In-view navigation buttons.
+    let a = this.clone();
+    web_back.connect_clicked(move |_| {
+        if let Some(webview) = a.webview.borrow().as_ref() {
+            webview.go_back();
+        }
+    });
+    let a = this.clone();
+    web_forward.connect_clicked(move |_| {
+        if let Some(webview) = a.webview.borrow().as_ref() {
+            webview.go_forward();
+        }
+    });
+
     this
 }
 
@@ -529,36 +557,69 @@ impl App {
         }
     }
 
-    /// Switch the reader to the full WebKit view of the current article. Creates
-    /// a fresh WebView (JS off, remote images gated, ephemeral session),
-    /// dropping any previous one so its subprocesses are released.
+    /// Switch the reader to the full WebKit view: load the live article page
+    /// (JavaScript off, images on, ephemeral session with tracking prevention).
+    /// A fresh WebView is created each time, dropping any previous one so its
+    /// subprocesses are released.
     fn enable_webkit(self: &Rc<Self>) {
-        let Some(html) = self.current_content.borrow().clone() else {
-            // Nothing to show; revert the toggle.
+        let url = self.current_url.borrow().clone();
+        let content = self.current_content.borrow().clone();
+        if url.is_none() && content.is_none() {
             self.webkit_toggle.set_active(false);
             return;
-        };
+        }
 
         if let Some(old) = self.webview.borrow_mut().take() {
             self.webkit_holder.remove(&old);
         }
-        let webview = build_webview(&html);
+
+        let webview = configure_webview(url.as_deref(), content.as_deref().unwrap_or(""));
+
+        // Reveal the page once it commits/finishes and keep nav buttons in sync.
+        let app = self.clone();
+        webview.connect_load_changed(move |wv, event| match event {
+            webkit6::LoadEvent::Committed | webkit6::LoadEvent::Finished => {
+                app.reader_stack.set_visible_child_name("webkit");
+                app.web_back.set_sensitive(wv.can_go_back());
+                app.web_forward.set_sensitive(wv.can_go_forward());
+            }
+            _ => {}
+        });
+        // On failure, reveal WebKit's own error page instead of hanging the spinner.
+        let app = self.clone();
+        webview.connect_load_failed(move |_wv, _event, _uri, _err| {
+            app.reader_stack.set_visible_child_name("webkit");
+            false // let WebKit render its default error page
+        });
+
         self.webkit_holder.append(&webview);
         *self.webview.borrow_mut() = Some(webview);
-        self.reader_stack.set_visible_child_name("webkit");
+
+        self.web_back.set_visible(true);
+        self.web_forward.set_visible(true);
+        self.web_back.set_sensitive(false);
+        self.web_forward.set_sensitive(false);
+        self.reader_stack.set_visible_child_name("webloading");
     }
 
     /// Return to the light renderer and fully destroy the WebView.
     fn disable_webkit(self: &Rc<Self>) {
-        if let Some(webview) = self.webview.borrow_mut().take() {
-            self.webkit_holder.remove(&webview);
-            // `webview` drops here → last ref gone → WebKit subprocesses exit.
-        }
+        self.destroy_webview();
         if self.current_article.get().is_some() {
             self.reader_stack.set_visible_child_name("content");
         } else {
             self.reader_stack.set_visible_child_name("empty");
         }
+    }
+
+    /// Drop the WebView (releasing its subprocesses) and hide the nav buttons.
+    fn destroy_webview(&self) {
+        if let Some(webview) = self.webview.borrow_mut().take() {
+            self.webkit_holder.remove(&webview);
+            // `webview` drops here → last ref gone → WebKit subprocesses exit.
+        }
+        self.web_back.set_visible(false);
+        self.web_forward.set_visible(false);
     }
 
     /// Mark one article read: update the DB, un-bold its row, refresh badges.
@@ -921,9 +982,7 @@ impl App {
         self.current_article.set(None);
         *self.current_url.borrow_mut() = None;
         *self.current_content.borrow_mut() = None;
-        if let Some(webview) = self.webview.borrow_mut().take() {
-            self.webkit_holder.remove(&webview);
-        }
+        self.destroy_webview();
         self.reader_stack.set_visible_child_name("empty");
     }
 
@@ -980,25 +1039,32 @@ fn browser_icon_name() -> &'static str {
     "web-browser-symbolic"
 }
 
-/// Build a locked-down WebView for the full reader: JavaScript disabled, remote
-/// images/content gated, and an ephemeral session (no cookies/cache persisted).
-fn build_webview(html: &str) -> webkit6::WebView {
+/// Build the WebView for the full reader: load the live article page so it
+/// renders as the site serves it (HTML, CSS, images). JavaScript stays
+/// disabled, and the session is ephemeral with tracking prevention, so no
+/// cookies/cache persist and cross-site trackers are curbed. Falls back to the
+/// stored content fragment for articles without a URL.
+fn configure_webview(url: Option<&str>, content: &str) -> webkit6::WebView {
     let settings = webkit6::Settings::new();
     settings.set_enable_javascript(false);
     settings.set_enable_javascript_markup(false);
-    settings.set_auto_load_images(false); // gate remote images/trackers
     settings.set_enable_webgl(false);
     settings.set_enable_html5_local_storage(false);
 
     let session = webkit6::NetworkSession::new_ephemeral();
+    session.set_itp_enabled(true); // intelligent tracking prevention
+
     let webview = webkit6::WebView::builder()
         .network_session(&session)
         .settings(&settings)
         .build();
     webview.set_vexpand(true);
     webview.set_hexpand(true);
-    // No base URI: relative subresources don't resolve to a remote origin.
-    webview.load_html(html, None);
+
+    match url {
+        Some(u) if !u.trim().is_empty() => webview.load_uri(u),
+        _ => webview.load_html(content, None),
+    }
     webview
 }
 

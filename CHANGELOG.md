@@ -11,9 +11,11 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ### M5 — WebKit reader, discovery, settings
 - Reader toggle switches the light (Pango) renderer to a full **WebKitGTK**
-  view: JavaScript disabled, remote images/content gated, ephemeral session.
-  Toggling back (or leaving the article) fully destroys the WebView so its
-  subprocesses exit.
+  view that loads the **live article page** (HTML/CSS/images as the site serves
+  it). JavaScript stays disabled; the session is ephemeral with tracking
+  prevention (no persisted cookies/cache). In-view link navigation with
+  back/forward buttons and a loading spinner. Toggling back (or leaving the
+  article) fully destroys the WebView so its subprocesses exit.
 - Discovery-driven **Add feed**: enter a website or feed URL → Fodder resolves
   it (direct feed → title-preview confirm; multiple candidates → picker;
   none → clear message) before subscribing.
