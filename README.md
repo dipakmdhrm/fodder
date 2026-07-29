@@ -14,8 +14,8 @@ A Cargo workspace with three crates:
 | Crate | Kind | Responsibility |
 |-------|------|----------------|
 | `core` (`fodder-core`) | library | Models, SQLite store + migrations, HTTP poller (conditional GET), feed discovery, config, IPC protocol. |
-| `fodderd` | binary | Headless daemon: tokio poll loop, shared SQLite (WAL), desktop notifications, single-instance IPC socket. Owns the tray and spawns the viewer *(tray/spawn land in M3)*. |
-| `fodder` | binary | GTK4 + libadwaita viewer *(the 3-pane UI lands in M4)*. |
+| `fodderd` | binary | Headless daemon: tokio poll loop, shared SQLite (WAL), desktop notifications, single-instance IPC socket, system-tray icon, and on-demand viewer spawning. |
+| `fodder` | binary | GTK4 + libadwaita viewer *(the 3-pane UI lands in M4; currently a placeholder window)*. |
 
 **Process model.** `fodderd` is the primary process and stays resident. The
 `fodder` viewer is launched on demand and terminated on close. Exactly one
@@ -44,20 +44,23 @@ cargo test --workspace      # run the test suite
 
 ## Running (current state)
 
-The daemon runs and polls feeds today; the viewer is still a placeholder
-window. Until the GTK UI lands, a couple of example tools let you exercise the
-working parts.
+The daemon runs, polls feeds, shows a tray icon, and can spawn the viewer; the
+viewer window itself is still a placeholder. Until the GTK UI lands, a couple of
+example tools let you exercise the working parts.
 
 ```bash
-# Run the daemon (foreground, with logs)
+# Run the daemon (foreground, with logs). Shows a tray icon where supported;
+# left-click or the tray's "Open Fodder" spawns the viewer.
 RUST_LOG=info cargo run -p fodderd
 
 # Drive the daemon over IPC (in another terminal)
 cargo run -p fodderd --example ctl -- ping
 cargo run -p fodderd --example ctl -- subscribe <feed-url> "<title>"
 cargo run -p fodderd --example ctl -- refresh
-cargo run -p fodderd --example ctl -- list        # show subscribed feeds
-cargo run -p fodderd --example ctl -- rm <id>     # unsubscribe (cascade)
+cargo run -p fodderd --example ctl -- open              # spawn/raise the viewer
+cargo run -p fodderd --example ctl -- list              # show subscribed feeds
+cargo run -p fodderd --example ctl -- rm <id>           # unsubscribe (cascade)
+cargo run -p fodderd --example ctl -- autostart on|off|status
 
 # Exercise core feed discovery + polling directly against a URL
 cargo run -p fodder-core --example poll -- https://blog.rust-lang.org/

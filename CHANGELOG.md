@@ -7,13 +7,24 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 ## Unreleased
 
 ### Planned
-- **M3** — Tray icon (StatusNotifierItem) with graceful degrade, on-demand
-  viewer spawn/reap, autostart `.desktop` writer.
 - **M4** — Viewer: 3-pane libadwaita UI, feed/article lists, sanitized light
   reader, mark-read / mark-all-read / refresh / open-in-browser.
 - **M5** — Viewer: WebKit reader toggle, discovery-driven subscribe/remove,
   settings (autostart, poll interval).
 - **M6** — Integration pass across GNOME / KDE / XFCE / Sway.
+
+### M3 — Tray & viewer process management
+- StatusNotifierItem system tray via `ksni` (Open / Refresh all / Quit;
+  left-click opens the viewer). Registration is best-effort: on hosts without
+  an SNI tray it degrades gracefully and keeps polling/notifying.
+- On-demand viewer process management: spawn the single `fodder` child on an
+  open request (navigation target passed as CLI args), enforce one viewer, reap
+  it on exit, and terminate it on daemon shutdown.
+- Shared autostart writer (`core::autostart`): install/remove
+  `~/.config/autostart/fodder.desktop` (launches the daemon). Exposed via
+  `ctl autostart on|off|status`.
+- Unified shutdown (SIGINT/SIGTERM or the tray's Quit) that reaps the viewer,
+  tears down the tray, and removes the socket.
 
 ### M2 — Daemon
 - Single-instance guard via the runtime socket with stale-socket probe.

@@ -1,5 +1,6 @@
 //! Shared daemon state and the blocking-DB bridge.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use fodder_core::db::{Db, DbError};
@@ -8,6 +9,7 @@ use fodder_core::poller::Poller;
 use fodder_core::Config;
 use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::oneshot;
 
 /// A request to bring the viewer to the foreground (from a notification click,
 /// a second `fodderd` launch, or a tray action in M3).
@@ -36,6 +38,13 @@ pub struct AppCtx {
     /// Outbound channel to the currently-connected viewer, if any. Set on
     /// `ViewerHello`, cleared on disconnect.
     pub viewer: Arc<Mutex<Option<UnboundedSender<IpcMessage>>>>,
+    /// Whether a viewer child process is currently spawned (it may not have
+    /// connected back over IPC yet). Guards against spawning a second viewer.
+    pub viewer_alive: Arc<AtomicBool>,
+    /// An open request deferred until the just-spawned viewer connects.
+    pub pending_open: Arc<Mutex<Option<OpenRequest>>>,
+    /// Fires to terminate the current viewer child (on daemon shutdown).
+    pub viewer_kill: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     /// Requests to open/raise the viewer.
     pub open_tx: UnboundedSender<OpenRequest>,
     /// Requests to poll now: `Some(feed_id)` for one feed, `None` for all due.
@@ -68,5 +77,14 @@ impl AppCtx {
         } else {
             false
         }
+    }
+
+    /// Whether a viewer child process is currently believed to be running.
+    pub fn viewer_alive(&self) -> bool {
+        self.viewer_alive.load(Ordering::Acquire)
+    }
+
+    pub fn set_viewer_alive(&self, alive: bool) {
+        self.viewer_alive.store(alive, Ordering::Release);
     }
 }

@@ -21,12 +21,15 @@ async fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let cmd = args.next().unwrap_or_default();
 
-    // These commands read/write the DB directly and don't need the daemon.
+    // These commands act locally and don't need the daemon.
     match cmd.as_str() {
         "list" => return list_feeds(),
         "rm" => {
             let id: i64 = args.next().expect("rm needs <feed_id>").parse()?;
             return remove_feed(id);
+        }
+        "autostart" => {
+            return autostart(args.next().as_deref());
         }
         _ => {}
     }
@@ -91,5 +94,32 @@ fn remove_feed(id: i64) -> anyhow::Result<()> {
     let db = Db::open(&paths::db_path()?)?;
     feeds::delete_feed(db.conn(), id)?;
     println!("removed feed {id} (and its articles)");
+    Ok(())
+}
+
+/// Query or toggle the autostart `.desktop` entry.
+fn autostart(action: Option<&str>) -> anyhow::Result<()> {
+    use fodder_core::autostart;
+    match action {
+        Some("on") => {
+            autostart::enable()?;
+            println!("autostart enabled -> {}", autostart::desktop_path()?.display());
+        }
+        Some("off") => {
+            autostart::disable()?;
+            println!("autostart disabled");
+        }
+        Some("status") | None => {
+            println!(
+                "autostart: {} ({})",
+                if autostart::is_enabled() { "on" } else { "off" },
+                autostart::desktop_path()?.display()
+            );
+        }
+        Some(other) => {
+            eprintln!("usage: autostart [status|on|off], got {other:?}");
+            std::process::exit(2);
+        }
+    }
     Ok(())
 }

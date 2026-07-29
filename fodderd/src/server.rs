@@ -82,8 +82,11 @@ async fn handle_msg(
         IpcMessage::ViewerHello => {
             *is_viewer = true;
             *ctx.viewer.lock().expect("viewer mutex poisoned") = Some(out_tx.clone());
+            ctx.set_viewer_alive(true);
             tracing::info!("viewer connected");
             let _ = out_tx.send(IpcMessage::Ack);
+            // Deliver any open request that was deferred while it started up.
+            crate::viewer_proc::deliver_pending(ctx);
         }
         IpcMessage::ViewerClosing => {
             return true;

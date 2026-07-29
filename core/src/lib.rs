@@ -4,6 +4,7 @@
 //! the SQLite store + migrations, the feed poller (conditional GET), feed
 //! discovery, and the IPC message protocol.
 
+pub mod autostart;
 pub mod config;
 pub mod db;
 pub mod discovery;
