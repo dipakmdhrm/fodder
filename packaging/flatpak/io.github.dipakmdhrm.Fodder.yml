@@ -2,8 +2,6 @@ app-id: io.github.dipakmdhrm.Fodder
 runtime: org.gnome.Platform
 runtime-version: '47'
 sdk: org.gnome.Sdk
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable
 command: fodder-launcher
 
 finish-args:
@@ -20,18 +18,24 @@ finish-args:
   - --talk-name=org.freedesktop.portal.*
 
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin
-  # Self-hosted repo build: let cargo fetch crates from the network. (A Flathub
-  # submission would instead vendor them via a generated cargo-sources.json.)
+  # The SDK's rust-stable extension lags behind what gtk4-rs 0.22 needs
+  # (rustc >= 1.92), so install a modern toolchain via rustup. Self-hosted repo
+  # build: cargo/rustup fetch over the network. (A Flathub submission would
+  # instead pin the SDK rust and vendor crates via a generated
+  # cargo-sources.json.)
+  append-path: /run/build/fodder/cargo/bin
   build-args:
     - --share=network
   env:
     CARGO_HOME: /run/build/fodder/cargo
+    RUSTUP_HOME: /run/build/fodder/rustup
 
 modules:
   - name: fodder
     buildsystem: simple
     build-commands:
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+        sh -s -- -y --profile minimal --default-toolchain 1.97.0 --no-modify-path
       - cargo build --release --workspace --locked
       - install -Dm755 target/release/fodderd /app/bin/fodderd
       - install -Dm755 target/release/fodder /app/bin/fodder

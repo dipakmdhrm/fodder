@@ -128,7 +128,7 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          pacman -Syu --noconfirm git base-devel rust \
+          pacman -Syu --noconfirm git base-devel rust cmake \
             gtk4 libadwaita webkitgtk-6.0
 
       - uses: actions/checkout@v4
@@ -157,7 +157,11 @@ jobs:
   # Flatpak bundle + per-arch ostree repo (amd64 + arm64)
   build-flatpak:
     needs: get-version
+    # Non-blocking: Flatpak is the trickiest target; a failure here must not
+    # block the deb/rpm/arch release or the apt repo publish.
+    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         include:
           - { runner: ubuntu-latest,    arch: x86_64 }
@@ -173,8 +177,7 @@ jobs:
           sudo flatpak remote-add --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           sudo flatpak install -y flathub \
-            org.gnome.Platform//47 org.gnome.Sdk//47 \
-            org.freedesktop.Sdk.Extension.rust-stable//24.08
+            org.gnome.Platform//47 org.gnome.Sdk//47
 
       - name: Build flatpak
         run: |
@@ -305,6 +308,8 @@ jobs:
         with:
           tag_name: v${{ needs.get-version.outputs.version }}
           generate_release_notes: true
+          # Don't fail if the (non-blocking) Flatpak bundle is missing.
+          fail_on_unmatched_files: false
           files: |
             artifacts/*.deb
             artifacts/*.rpm
