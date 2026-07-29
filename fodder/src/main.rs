@@ -24,6 +24,8 @@ fn main() -> glib::ExitCode {
         )
         .init();
 
+    fodder_core::install_default_crypto();
+
     // Parse our own navigation args before GTK sees them.
     let target = parse_args();
 

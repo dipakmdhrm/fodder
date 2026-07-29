@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 reqwest.workspace = true
+rustls.workspace = true
 feed-rs.workspace = true
 tokio = { workspace = true, features = ["rt", "io-util", "net", "macros", "time", "sync"] }
 futures.workspace = true

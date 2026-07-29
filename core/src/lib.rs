@@ -8,6 +8,14 @@
 /// installed `.desktop` file and icon.
 pub const APP_ID: &str = "io.github.dipakmdhrm.Fodder";
 
+/// Install rustls's `ring` crypto provider as the process default. Must be
+/// called once, before any `reqwest` client is built (we use
+/// `reqwest`'s `rustls-no-provider`, so no provider is installed automatically).
+/// Idempotent: a second call is a no-op.
+pub fn install_default_crypto() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 pub mod autostart;
 pub mod config;
 pub mod db;

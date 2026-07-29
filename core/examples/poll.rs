@@ -17,6 +17,7 @@ use fodder_core::poller::{PollOutcome, Poller};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
+    fodder_core::install_default_crypto();
     let url = std::env::args().nth(1).unwrap_or_else(|| {
         eprintln!("usage: cargo run -p fodder-core --example poll -- <url>");
         std::process::exit(2);

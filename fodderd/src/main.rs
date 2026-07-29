@@ -36,6 +36,8 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    fodder_core::install_default_crypto();
+
     // `--open-viewer` (used by the app-menu launcher) opens the viewer once the
     // daemon is up. Autostart launches `fodderd` without it, staying headless.
     let open_viewer = std::env::args().any(|arg| arg == "--open-viewer");

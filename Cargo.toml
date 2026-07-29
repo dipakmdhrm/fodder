@@ -20,8 +20,12 @@ libadwaita = { version = "0.9.2", features = ["v1_5"] }
 webkit6 = "0.6.1"
 
 # --- Networking / feed parsing ---
-# reqwest 0.13 renamed the TLS feature to `rustls` (was `rustls-tls` in 0.12).
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "gzip", "json", "http2"] }
+# Use rustls with the `ring` crypto backend (not aws-lc-rs): ring builds without
+# cmake/nasm/go, so packaging in minimal distro containers (Arch, Flatpak) works.
+# `rustls-no-provider` gives reqwest rustls with no default provider; we install
+# ring's provider at startup via `fodder_core::install_default_crypto()`.
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider", "gzip", "json", "http2"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 feed-rs = "2.4.0"
 
 # --- Async ---

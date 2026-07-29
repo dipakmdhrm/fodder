@@ -16,6 +16,7 @@ const RSS_BODY: &str = r#"<?xml version="1.0"?>
 </channel></rss>"#;
 
 fn client() -> reqwest::Client {
+    fodder_core::install_default_crypto();
     reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
