@@ -36,3 +36,13 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace
+
+  # Build every package (.deb, .rpm, Arch, Flatpak) on each PR so a release tag
+  # is just a repeat of an already-validated build. Uses the same reusable
+  # workflow the Release pipeline calls. Gated on `check` to avoid burning
+  # runners when formatting/lint/tests fail.
+  packages:
+    needs: check
+    uses: ./.github/workflows/build-packages.yml
+    with:
+      version: 0.0.0

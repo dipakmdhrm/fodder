@@ -111,7 +111,7 @@ viewer by launching the **`target/debug/fodder`** binary by path. After changing
 code, run `cargo build --workspace` (or `./install.sh`) first, or the daemon will spawn a
 **stale** viewer.
 
-**Packaging / release** lives in `packaging/` and `.github/workflows/`; see `docs/RELEASING.md`. Per-user install without packaging: `./install.sh` / `./uninstall.sh [--purge]`.
+**Packaging / release** lives in `packaging/` and `.github/workflows/`; see `docs/RELEASING.md`. The four package builds (`.deb`, `.rpm`, Arch, Flatpak) live in one reusable workflow, `build-packages.yml`, that both `ci.yml` (on every PR, so a tag is just a repeat of an already-green build) and `release.yml` (on a `v*` tag, which then signs + publishes the apt/flatpak repos and cuts the GitHub Release) call. The Arch build links the **system** SQLite (its PKGBUILD drops rusqlite's `bundled` feature) because makepkg's hardening link flags break the vendored static SQLite; the deb/rpm/flatpak/dev builds still bundle it. Per-user install without packaging: `./install.sh` / `./uninstall.sh [--purge]`.
 
 ---
 

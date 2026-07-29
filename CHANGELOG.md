@@ -4,6 +4,16 @@ All notable changes to Fodder Reader are documented here. The format loosely
 follows [Keep a Changelog](https://keepachangelog.com/). The project is
 pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
+## Unreleased
+
+### Build & release
+- The Arch package now builds again: it links the **system** SQLite (its
+  PKGBUILD drops rusqlite's `bundled` feature) instead of the vendored copy,
+  whose static symbols were dropped by makepkg's hardening link flags.
+- Every package (`.deb`, `.rpm`, Arch, Flatpak) is now built on each pull
+  request via a shared reusable workflow (`build-packages.yml`) that the
+  Release pipeline also calls, so a release tag repeats an already-green build.
+
 ## 0.1.1
 
 ### Build & release
