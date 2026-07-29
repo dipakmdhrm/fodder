@@ -187,10 +187,15 @@ async fn store_updated(
     // Do all the writes in one blocking hop and return the new articles' details.
     let new_items: Vec<NotifyItem> = ctx
         .with_conn(move |c| {
-            // Update the title if the feed now advertises a (different) one.
-            if let Some(t) = &title {
-                if !t.is_empty() && *t != old_title {
-                    feeds::update_feed_title(c, feed_id, t)?;
+            // Only fill in a title from the feed document when we don't already
+            // have one. Never clobber the title chosen at subscribe time (from
+            // discovery / the site's <link title>), which is often friendlier
+            // than the feed's own <title> element.
+            if old_title.trim().is_empty() {
+                if let Some(t) = &title {
+                    if !t.trim().is_empty() {
+                        feeds::update_feed_title(c, feed_id, t)?;
+                    }
                 }
             }
 

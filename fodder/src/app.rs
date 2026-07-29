@@ -699,20 +699,30 @@ impl App {
     fn discover(self: &Rc<Self>, url: String) {
         let client = self.http.clone();
         let this = self.clone();
-        let probe = url.clone();
+        let user_url = url.clone();
         runtime::run_async(
             self.rt.handle(),
             async move {
-                discovery::resolve_feed(&client, &probe)
+                discovery::resolve_feed(&client, &url)
                     .await
                     .map_err(|e| e.to_string())
             },
             move |res| match res {
+                // Direct feed: resolve_feed already parsed the feed's title.
                 Ok(DiscoveryResult::DirectFeed { url, title }) => this.confirm_subscribe(url, title),
-                Ok(DiscoveryResult::Candidates(candidates)) => this.pick_candidate(candidates),
+                Ok(DiscoveryResult::Candidates(mut candidates)) => {
+                    if candidates.len() == 1 {
+                        // Exactly one feed — no picker, just confirm it.
+                        let only = candidates.remove(0);
+                        let title = title_for(&only, &user_url);
+                        this.confirm_subscribe(only.url, title);
+                    } else {
+                        this.pick_candidate(candidates, user_url);
+                    }
+                }
                 Ok(DiscoveryResult::None) => this.info_dialog(
                     "No feed found",
-                    &format!("Couldn't find an RSS/Atom/JSON feed at:\n{url}"),
+                    &format!("Couldn't find an RSS/Atom/JSON feed at:\n{user_url}"),
                 ),
                 Err(e) => this.info_dialog("Couldn't fetch that URL", &e),
             },
@@ -744,7 +754,7 @@ impl App {
     }
 
     /// Step 3b: several candidate feeds — let the user pick one.
-    fn pick_candidate(self: &Rc<Self>, candidates: Vec<DiscoveredFeed>) {
+    fn pick_candidate(self: &Rc<Self>, candidates: Vec<DiscoveredFeed>, user_url: String) {
         let list = gtk::ListBox::new();
         list.set_selection_mode(gtk::SelectionMode::Single);
         list.add_css_class("boxed-list");
@@ -780,7 +790,7 @@ impl App {
             if response == "subscribe" {
                 if let Some(row) = list.selected_row() {
                     if let Some(feed) = candidates.get(row.index() as usize) {
-                        let title = feed.title.clone().unwrap_or_else(|| feed.url.clone());
+                        let title = title_for(feed, &user_url);
                         let _ = this.cmd_tx.send(IpcMessage::SubscribeResolved {
                             feed_url: feed.url.clone(),
                             title,
@@ -941,6 +951,21 @@ fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::from_icon_name(icon);
     button.set_tooltip_text(Some(tooltip));
     button
+}
+
+/// Pick a display title for a discovered feed: the advertised feed title, else
+/// the feed URL, else the URL the user typed.
+fn title_for(feed: &DiscoveredFeed, user_url: &str) -> String {
+    feed.title
+        .clone()
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| {
+            if feed.url.trim().is_empty() {
+                user_url.to_string()
+            } else {
+                feed.url.clone()
+            }
+        })
 }
 
 /// Icon for the "open in browser" button: prefer the Firefox logo, but fall
