@@ -6,15 +6,17 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use fodder_core::db::{articles, feeds, Db};
+use fodder_core::discovery::{self, DiscoveredFeed, DiscoveryResult};
 use fodder_core::ipc::IpcMessage;
 use fodder_core::models::Article;
-use fodder_core::paths;
+use fodder_core::{paths, Config};
 use gtk4 as gtk;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib, pango};
 use libadwaita as adw;
 use adw::prelude::*;
 use tokio::sync::mpsc::{self, UnboundedSender};
+use webkit6::prelude::*;
 
 use crate::ipc_client::{self, FromDaemon};
 use crate::reader;
@@ -43,6 +45,9 @@ pub struct App {
     reader_meta: gtk::Label,
     reader_body: gtk::Label,
     reader_error: adw::StatusPage,
+    webkit_toggle: gtk::ToggleButton,
+    webkit_holder: gtk::Box,
+    webview: RefCell<Option<webkit6::WebView>>,
 
     // Row → id maps, parallel to the list rows.
     feed_ids: RefCell<Vec<Option<i64>>>,
@@ -52,10 +57,12 @@ pub struct App {
     selected_feed: Cell<Option<i64>>,
     current_article: Cell<Option<i64>>,
     current_url: RefCell<Option<String>>,
+    current_content: RefCell<Option<String>>,
     suppress: Cell<bool>,
 
     db: DbHandle,
     rt: tokio::runtime::Runtime,
+    http: reqwest::Client,
     cmd_tx: UnboundedSender<IpcMessage>,
 }
 
@@ -145,11 +152,13 @@ fn assemble(
     let add_btn = icon_button("list-add-symbolic", "Add feed");
     let remove_btn = icon_button("list-remove-symbolic", "Remove selected feed");
     let refresh_btn = icon_button("view-refresh-symbolic", "Refresh all feeds");
+    let prefs_btn = icon_button("preferences-system-symbolic", "Preferences");
     let feeds_header = adw::HeaderBar::new();
     feeds_header.set_title_widget(Some(&adw::WindowTitle::new("Feeds", "")));
     feeds_header.pack_start(&add_btn);
     feeds_header.pack_start(&remove_btn);
     feeds_header.pack_end(&refresh_btn);
+    feeds_header.pack_end(&prefs_btn);
     let feeds_pane = adw::ToolbarView::new();
     feeds_pane.add_top_bar(&feeds_header);
     feeds_pane.set_content(Some(&feeds_scroll));
@@ -207,16 +216,27 @@ fn assemble(
         .icon_name("dialog-error-symbolic")
         .title("Something went wrong")
         .build();
+    // Full WebKit view lives on its own stack page; the WebView is created and
+    // destroyed on demand so its subprocesses only exist while in use.
+    let webkit_holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    webkit_holder.set_vexpand(true);
+    webkit_holder.set_hexpand(true);
+
     let reader_stack = gtk::Stack::new();
     reader_stack.add_named(&reader_scroll, Some("content"));
+    reader_stack.add_named(&webkit_holder, Some("webkit"));
     reader_stack.add_named(&status_page("emblem-documents-symbolic", "Select an article", "Choose an article from the list to read it here."), Some("empty"));
     reader_stack.add_named(&reader_error, Some("error"));
     reader_stack.set_visible_child_name("empty");
 
+    let webkit_toggle = gtk::ToggleButton::new();
+    webkit_toggle.set_icon_name("globe-symbolic");
+    webkit_toggle.set_tooltip_text(Some("Full web view (JavaScript disabled)"));
     let open_btn = icon_button(browser_icon_name(), "Open in browser");
     let reader_header = adw::HeaderBar::new();
     reader_header.set_title_widget(Some(&adw::WindowTitle::new("Reader", "")));
     reader_header.pack_end(&open_btn);
+    reader_header.pack_end(&webkit_toggle);
     let reader_pane = adw::ToolbarView::new();
     reader_pane.add_top_bar(&reader_header);
     reader_pane.set_content(Some(&reader_stack));
@@ -235,6 +255,12 @@ fn assemble(
 
     window.set_content(Some(&outer_split));
 
+    let http = reqwest::Client::builder()
+        .user_agent(concat!("FodderReader/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+
     let this = Rc::new(App {
         window,
         inner_split,
@@ -247,19 +273,27 @@ fn assemble(
         reader_meta,
         reader_body,
         reader_error,
+        webkit_toggle: webkit_toggle.clone(),
+        webkit_holder,
+        webview: RefCell::new(None),
         feed_ids: RefCell::new(Vec::new()),
         article_ids: RefCell::new(Vec::new()),
         article_titles: RefCell::new(Vec::new()),
         selected_feed: Cell::new(None),
         current_article: Cell::new(None),
         current_url: RefCell::new(None),
+        current_content: RefCell::new(None),
         suppress: Cell::new(false),
         db,
         rt,
+        http,
         cmd_tx,
     });
 
-    wire_signals(&this, &add_btn, &remove_btn, &refresh_btn, &mark_all_btn, &open_btn);
+    wire_signals(
+        &this, &add_btn, &remove_btn, &refresh_btn, &mark_all_btn, &open_btn, &prefs_btn,
+        &webkit_toggle,
+    );
     this
 }
 
@@ -270,6 +304,8 @@ fn wire_signals(
     refresh_btn: &gtk::Button,
     mark_all_btn: &gtk::Button,
     open_btn: &gtk::Button,
+    prefs_btn: &gtk::Button,
+    webkit_toggle: &gtk::ToggleButton,
 ) {
     let a = this.clone();
     this.feeds_list.connect_row_selected(move |_, row| {
@@ -313,6 +349,18 @@ fn wire_signals(
 
     let a = this.clone();
     remove_btn.connect_clicked(move |_| a.remove_selected_feed());
+
+    let a = this.clone();
+    prefs_btn.connect_clicked(move |_| a.open_settings());
+
+    let a = this.clone();
+    webkit_toggle.connect_toggled(move |btn| {
+        if btn.is_active() {
+            a.enable_webkit();
+        } else {
+            a.disable_webkit();
+        }
+    });
 }
 
 impl App {
@@ -457,7 +505,9 @@ impl App {
         self.reader_title.set_text(&article.title);
         self.reader_meta.set_text(&format_meta(&article));
         *self.current_url.borrow_mut() = article.url.clone();
+        *self.current_content.borrow_mut() = article.content.clone();
 
+        // Light (Pango) rendering — always kept up to date on the content page.
         let markup = reader::html_to_pango(article.content.as_deref().unwrap_or(""));
         if markup.is_empty() {
             self.reader_body
@@ -465,11 +515,49 @@ impl App {
         } else {
             self.reader_body.set_markup(&markup);
         }
-        self.reader_stack.set_visible_child_name("content");
+
+        // Show the chosen renderer.
+        if self.webkit_toggle.is_active() {
+            self.enable_webkit();
+        } else {
+            self.reader_stack.set_visible_child_name("content");
+        }
         self.inner_split.set_show_content(true);
 
         if !article.is_read {
             self.mark_read(article.id);
+        }
+    }
+
+    /// Switch the reader to the full WebKit view of the current article. Creates
+    /// a fresh WebView (JS off, remote images gated, ephemeral session),
+    /// dropping any previous one so its subprocesses are released.
+    fn enable_webkit(self: &Rc<Self>) {
+        let Some(html) = self.current_content.borrow().clone() else {
+            // Nothing to show; revert the toggle.
+            self.webkit_toggle.set_active(false);
+            return;
+        };
+
+        if let Some(old) = self.webview.borrow_mut().take() {
+            self.webkit_holder.remove(&old);
+        }
+        let webview = build_webview(&html);
+        self.webkit_holder.append(&webview);
+        *self.webview.borrow_mut() = Some(webview);
+        self.reader_stack.set_visible_child_name("webkit");
+    }
+
+    /// Return to the light renderer and fully destroy the WebView.
+    fn disable_webkit(self: &Rc<Self>) {
+        if let Some(webview) = self.webview.borrow_mut().take() {
+            self.webkit_holder.remove(&webview);
+            // `webview` drops here → last ref gone → WebKit subprocesses exit.
+        }
+        if self.current_article.get().is_some() {
+            self.reader_stack.set_visible_child_name("content");
+        } else {
+            self.reader_stack.set_visible_child_name("empty");
         }
     }
 
@@ -578,33 +666,180 @@ impl App {
         }
     }
 
+    /// Step 1: ask for a URL, then run feed discovery on it.
     fn add_feed_dialog(self: &Rc<Self>) {
         let entry = gtk::Entry::builder()
-            .placeholder_text("https://example.com/feed.xml")
+            .placeholder_text("https://example.com  or  …/feed.xml")
             .activates_default(true)
             .build();
-        let dialog = adw::AlertDialog::new(Some("Add feed"), Some("Enter a feed URL."));
+        let dialog = adw::AlertDialog::new(
+            Some("Add feed"),
+            Some("Enter a website or feed URL. Fodder will look for its feed."),
+        );
         dialog.set_extra_child(Some(&entry));
         dialog.add_response("cancel", "Cancel");
-        dialog.add_response("add", "Add");
-        dialog.set_response_appearance("add", adw::ResponseAppearance::Suggested);
-        dialog.set_default_response(Some("add"));
+        dialog.add_response("find", "Find");
+        dialog.set_response_appearance("find", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("find"));
         dialog.set_close_response("cancel");
 
         let this = self.clone();
         dialog.connect_response(None, move |_, response| {
-            if response == "add" {
+            if response == "find" {
                 let url = entry.text().trim().to_string();
                 if !url.is_empty() {
-                    // Discovery/validation lands in M5; for now subscribe the
-                    // raw URL through the daemon (which polls it).
-                    let _ = this.cmd_tx.send(IpcMessage::SubscribeResolved {
-                        feed_url: url.clone(),
-                        title: url,
-                    });
+                    this.discover(url);
                 }
             }
         });
+        dialog.present(Some(&self.window));
+    }
+
+    /// Step 2: resolve the URL to a feed (direct, candidates, or none).
+    fn discover(self: &Rc<Self>, url: String) {
+        let client = self.http.clone();
+        let this = self.clone();
+        let probe = url.clone();
+        runtime::run_async(
+            self.rt.handle(),
+            async move {
+                discovery::resolve_feed(&client, &probe)
+                    .await
+                    .map_err(|e| e.to_string())
+            },
+            move |res| match res {
+                Ok(DiscoveryResult::DirectFeed { url, title }) => this.confirm_subscribe(url, title),
+                Ok(DiscoveryResult::Candidates(candidates)) => this.pick_candidate(candidates),
+                Ok(DiscoveryResult::None) => this.info_dialog(
+                    "No feed found",
+                    &format!("Couldn't find an RSS/Atom/JSON feed at:\n{url}"),
+                ),
+                Err(e) => this.info_dialog("Couldn't fetch that URL", &e),
+            },
+        );
+    }
+
+    /// Step 3a: a single feed — preview its title and confirm.
+    fn confirm_subscribe(self: &Rc<Self>, feed_url: String, title: String) {
+        let dialog = adw::AlertDialog::new(
+            Some("Subscribe to this feed?"),
+            Some(&format!("{title}\n\n{feed_url}")),
+        );
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("subscribe", "Subscribe");
+        dialog.set_response_appearance("subscribe", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("subscribe"));
+        dialog.set_close_response("cancel");
+
+        let this = self.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "subscribe" {
+                let _ = this.cmd_tx.send(IpcMessage::SubscribeResolved {
+                    feed_url: feed_url.clone(),
+                    title: title.clone(),
+                });
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    /// Step 3b: several candidate feeds — let the user pick one.
+    fn pick_candidate(self: &Rc<Self>, candidates: Vec<DiscoveredFeed>) {
+        let list = gtk::ListBox::new();
+        list.set_selection_mode(gtk::SelectionMode::Single);
+        list.add_css_class("boxed-list");
+        for feed in &candidates {
+            let title = feed.title.clone().unwrap_or_else(|| feed.url.clone());
+            let row = adw::ActionRow::builder()
+                .title(glib::markup_escape_text(&title).as_str())
+                .subtitle(glib::markup_escape_text(&feed.url).as_str())
+                .build();
+            list.append(&row);
+        }
+        if let Some(first) = list.row_at_index(0) {
+            list.select_row(Some(&first));
+        }
+        let scroller = gtk::ScrolledWindow::builder()
+            .min_content_height(180)
+            .child(&list)
+            .build();
+
+        let dialog = adw::AlertDialog::new(
+            Some("Choose a feed"),
+            Some("This page offers more than one feed."),
+        );
+        dialog.set_extra_child(Some(&scroller));
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("subscribe", "Subscribe");
+        dialog.set_response_appearance("subscribe", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("subscribe"));
+        dialog.set_close_response("cancel");
+
+        let this = self.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "subscribe" {
+                if let Some(row) = list.selected_row() {
+                    if let Some(feed) = candidates.get(row.index() as usize) {
+                        let title = feed.title.clone().unwrap_or_else(|| feed.url.clone());
+                        let _ = this.cmd_tx.send(IpcMessage::SubscribeResolved {
+                            feed_url: feed.url.clone(),
+                            title,
+                        });
+                    }
+                }
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    /// A simple informational dialog with a single dismiss button.
+    fn info_dialog(self: &Rc<Self>, heading: &str, body: &str) {
+        let dialog = adw::AlertDialog::new(Some(heading), Some(body));
+        dialog.add_response("ok", "OK");
+        dialog.set_default_response(Some("ok"));
+        dialog.set_close_response("ok");
+        dialog.present(Some(&self.window));
+    }
+
+    /// The preferences dialog: autostart toggle + poll interval.
+    fn open_settings(self: &Rc<Self>) {
+        let group = adw::PreferencesGroup::new();
+        group.set_title("General");
+
+        let autostart = adw::SwitchRow::new();
+        autostart.set_title("Start daemon at login");
+        autostart.set_subtitle("Installs an autostart entry for the poller");
+        autostart.set_active(fodder_core::autostart::is_enabled());
+        autostart.connect_active_notify(|row| {
+            if let Err(e) = fodder_core::autostart::set_enabled(row.is_active()) {
+                tracing::warn!("autostart toggle failed: {e}");
+            }
+        });
+        group.add(&autostart);
+
+        let interval = adw::SpinRow::with_range(5.0, 1440.0, 5.0);
+        interval.set_title("Poll interval (minutes)");
+        interval.set_subtitle("Minimum 5. Applies after the daemon restarts.");
+        let current = paths::config_path()
+            .ok()
+            .map(|p| Config::load(&p).unwrap_or_default())
+            .unwrap_or_default();
+        interval.set_value(f64::from(current.poll_interval_minutes));
+        interval.connect_value_notify(|row| {
+            if let Ok(path) = paths::config_path() {
+                let mut cfg = Config::load(&path).unwrap_or_default();
+                cfg.poll_interval_minutes = (row.value() as u32).max(5);
+                if let Err(e) = cfg.save(&path) {
+                    tracing::warn!("saving config failed: {e}");
+                }
+            }
+        });
+        group.add(&interval);
+
+        let page = adw::PreferencesPage::new();
+        page.add(&group);
+        let dialog = adw::PreferencesDialog::new();
+        dialog.add(&page);
         dialog.present(Some(&self.window));
     }
 
@@ -675,6 +910,10 @@ impl App {
     fn clear_reader(&self) {
         self.current_article.set(None);
         *self.current_url.borrow_mut() = None;
+        *self.current_content.borrow_mut() = None;
+        if let Some(webview) = self.webview.borrow_mut().take() {
+            self.webkit_holder.remove(&webview);
+        }
         self.reader_stack.set_visible_child_name("empty");
     }
 
@@ -714,6 +953,28 @@ fn browser_icon_name() -> &'static str {
         }
     }
     "web-browser-symbolic"
+}
+
+/// Build a locked-down WebView for the full reader: JavaScript disabled, remote
+/// images/content gated, and an ephemeral session (no cookies/cache persisted).
+fn build_webview(html: &str) -> webkit6::WebView {
+    let settings = webkit6::Settings::new();
+    settings.set_enable_javascript(false);
+    settings.set_enable_javascript_markup(false);
+    settings.set_auto_load_images(false); // gate remote images/trackers
+    settings.set_enable_webgl(false);
+    settings.set_enable_html5_local_storage(false);
+
+    let session = webkit6::NetworkSession::new_ephemeral();
+    let webview = webkit6::WebView::builder()
+        .network_session(&session)
+        .settings(&settings)
+        .build();
+    webview.set_vexpand(true);
+    webview.set_hexpand(true);
+    // No base URI: relative subresources don't resolve to a remote origin.
+    webview.load_html(html, None);
+    webview
 }
 
 fn status_page(icon: &str, title: &str, description: &str) -> adw::StatusPage {

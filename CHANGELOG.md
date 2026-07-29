@@ -7,9 +7,18 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 ## Unreleased
 
 ### Planned
-- **M5** — Viewer: WebKit reader toggle, discovery-driven subscribe/remove,
-  settings (autostart, poll interval).
 - **M6** — Integration pass across GNOME / KDE / XFCE / Sway.
+
+### M5 — WebKit reader, discovery, settings
+- Reader toggle switches the light (Pango) renderer to a full **WebKitGTK**
+  view: JavaScript disabled, remote images/content gated, ephemeral session.
+  Toggling back (or leaving the article) fully destroys the WebView so its
+  subprocesses exit.
+- Discovery-driven **Add feed**: enter a website or feed URL → Fodder resolves
+  it (direct feed → title-preview confirm; multiple candidates → picker;
+  none → clear message) before subscribing.
+- **Preferences** dialog: autostart toggle (writes/removes the daemon's
+  autostart entry) and poll-interval spin (minimum 5 minutes, saved to config).
 
 ### M4 — Viewer UI
 - 3-pane libadwaita layout (`OverlaySplitView` + `NavigationSplitView`):
