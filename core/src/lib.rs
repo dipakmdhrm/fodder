@@ -4,6 +4,10 @@
 //! the SQLite store + migrations, the feed poller (conditional GET), feed
 //! discovery, and the IPC message protocol.
 
+/// The application ID: GApplication id, D-Bus/SNI name, and the basename of the
+/// installed `.desktop` file and icon.
+pub const APP_ID: &str = "io.github.dipakmdhrm.Fodder";
+
 pub mod autostart;
 pub mod config;
 pub mod db;

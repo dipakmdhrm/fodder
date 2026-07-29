@@ -14,7 +14,7 @@ use tokio::sync::Notify;
 
 use crate::state::OpenRequest;
 
-const APP_ID: &str = "io.github.dipakmdhrm.Fodder";
+use fodder_core::APP_ID;
 
 /// The tray model. Holds only cloneable senders so menu callbacks can hand work
 /// off to the daemon without blocking the menu.
@@ -34,7 +34,7 @@ impl Tray for FodderTray {
     }
 
     fn icon_name(&self) -> String {
-        "application-rss+xml".to_string()
+        APP_ID.to_string()
     }
 
     /// Left-click opens the viewer.

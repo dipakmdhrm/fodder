@@ -42,6 +42,19 @@ cargo build --workspace     # build all three crates
 cargo test --workspace      # run the test suite
 ```
 
+## Install (per-user)
+
+```bash
+./install.sh                # release build → ~/.local/bin, icon + .desktop → ~/.local/share
+```
+
+This installs the `fodderd`/`fodder` binaries, the app icon, and a desktop
+entry so **Fodder Reader** appears in your app menu. Ensure `~/.local/bin` is on
+your `PATH`. Remove it all with `./uninstall.sh` (your feeds/config are kept).
+
+For verifying the desktop integration across environments, see
+[docs/cross-desktop-testing.md](docs/cross-desktop-testing.md).
+
 ## Running (current state)
 
 The daemon runs, polls feeds, shows a tray icon, and spawns the viewer on

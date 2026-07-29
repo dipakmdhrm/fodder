@@ -29,7 +29,7 @@ pub fn enable() -> Result<()> {
          Name=Fodder Reader\n\
          Comment=RSS/Atom/JSON feed reader daemon\n\
          Exec={exec}\n\
-         Icon=application-rss+xml\n\
+         Icon=io.github.dipakmdhrm.Fodder\n\
          Terminal=false\n\
          Categories=Network;News;\n\
          X-GNOME-Autostart-enabled=true\n"

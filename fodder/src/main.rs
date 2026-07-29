@@ -15,8 +15,7 @@ use gtk::prelude::*;
 use libadwaita as adw;
 
 use app::Target;
-
-const APP_ID: &str = "io.github.dipakmdhrm.Fodder";
+use fodder_core::APP_ID;
 
 fn main() -> glib::ExitCode {
     tracing_subscriber::fmt()

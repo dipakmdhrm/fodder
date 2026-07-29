@@ -1,7 +1,8 @@
 //! Desktop notifications, batched one per feed and actionable (clicking opens
 //! the newest article).
 
-use notify_rust::Notification;
+use fodder_core::APP_ID;
+use notify_rust::{Hint, Notification};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::state::OpenRequest;
@@ -48,7 +49,8 @@ pub fn notify_feed(
             .appname("Fodder Reader")
             .summary(&summary)
             .body(&body)
-            .icon("application-rss+xml")
+            .icon(APP_ID)
+            .hint(Hint::DesktopEntry(APP_ID.to_string()))
             .action("default", "Open")
             .show();
 
@@ -82,7 +84,8 @@ pub fn notify_reminder(unread: i64, open_tx: UnboundedSender<OpenRequest>) {
             .appname("Fodder Reader")
             .summary("Time to catch up")
             .body(&body)
-            .icon("application-rss+xml")
+            .icon(APP_ID)
+            .hint(Hint::DesktopEntry(APP_ID.to_string()))
             .action("default", "Open")
             .show();
 

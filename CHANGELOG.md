@@ -6,8 +6,16 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
-### Planned
-- **M6** — Integration pass across GNOME / KDE / XFCE / Sway.
+### M6 — Desktop integration
+- App icon (`io.github.dipakmdhrm.Fodder.svg`) and a desktop entry so **Fodder
+  Reader** appears in the app menu with a proper icon/name.
+- Per-user `install.sh` / `uninstall.sh` (binaries → `~/.local/bin`, icon +
+  `.desktop` → `~/.local/share`), refreshing the icon/desktop caches.
+- Wired the app icon into the tray, desktop notifications (with a
+  `desktop-entry` hint), and the autostart entry; window↔app matching via
+  `StartupWMClass`. App ID centralized as `fodder_core::APP_ID`.
+- Cross-desktop test checklist (`docs/cross-desktop-testing.md`) covering
+  GNOME / KDE / XFCE / Sway, including the vanilla-GNOME tray degrade path.
 
 ### Notifications & live settings
 - Notification preferences: a master **Enable notifications** switch gating

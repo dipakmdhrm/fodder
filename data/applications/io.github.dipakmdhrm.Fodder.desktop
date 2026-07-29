@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Fodder Reader
+GenericName=Feed Reader
+Comment=Lightweight RSS/Atom/JSON feed reader
+Exec=fodder
+Icon=io.github.dipakmdhrm.Fodder
+Terminal=false
+Categories=Network;News;Feed;GTK;
+Keywords=RSS;Atom;JSON;Feed;News;Reader;
+StartupNotify=true
+StartupWMClass=io.github.dipakmdhrm.Fodder
