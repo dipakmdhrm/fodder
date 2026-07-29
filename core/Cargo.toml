@@ -1,0 +1,33 @@
+[package]
+name = "fodder-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "fodder_core"
+path = "src/lib.rs"
+
+[dependencies]
+reqwest.workspace = true
+feed-rs.workspace = true
+tokio = { workspace = true, features = ["rt", "io-util", "net", "macros", "time", "sync"] }
+futures.workspace = true
+rusqlite.workspace = true
+directories.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+scraper.workspace = true
+ammonia.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util"] }

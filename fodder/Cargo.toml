@@ -1,0 +1,29 @@
+[package]
+name = "fodder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "fodder"
+path = "src/main.rs"
+
+[dependencies]
+fodder-core.workspace = true
+gtk4.workspace = true
+libadwaita.workspace = true
+webkit6.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
+futures.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ammonia.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+directories.workspace = true

@@ -1,0 +1,15 @@
+# Rust / Cargo build artifacts
+/target
+
+# Backup files from rustfmt and editors
+**/*.rs.bk
+*.swp
+*~
+
+# Debug symbols
+*.pdb
+
+# Local editor / OS cruft
+/.idea
+/.vscode
+.DS_Store
