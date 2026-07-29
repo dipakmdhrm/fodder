@@ -1,28 +1,28 @@
 Origin: Fodder
 Label: Fodder
 Codename: stable
-Date: Wed, 29 Jul 2026 20:44:26 UTC
+Date: Wed, 29 Jul 2026 21:57:37 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Fodder APT repository
 MD5Sum:
- 2ffce3c1f6534081f56d9f99dc589f81 753 main/binary-amd64/Packages
- 1e1a0330ce24531d435296f309bc36b2 520 main/binary-amd64/Packages.gz
+ 9a311806656815cbcd61ba246185ea2c 753 main/binary-amd64/Packages
+ a564c0f67055426da7a5644b9b554820 523 main/binary-amd64/Packages.gz
  598dec8dea8e5a84f75534fb64001b26 100 main/binary-amd64/Release
- d811c8280b58289fb5fb92454167fc87 753 main/binary-arm64/Packages
- 8bea4017648a3d70b053ed4f1fb0f5a1 523 main/binary-arm64/Packages.gz
+ ce2a5a217741b4c4051afe95eac2eb15 753 main/binary-arm64/Packages
+ 0b2503e222408c0eb03e1b0734d27082 519 main/binary-arm64/Packages.gz
  8c59279aa752718486b514d9601b425a 100 main/binary-arm64/Release
 SHA1:
- fcf463f43e7ad368a6478d32648dfb15297a0ed2 753 main/binary-amd64/Packages
- c39688b49cb592ed0ee54560886606ee90593bca 520 main/binary-amd64/Packages.gz
+ 8105d566917ba8e3f22c86ada9d137ad92f4bdc0 753 main/binary-amd64/Packages
+ a26cafaa6514e3d1746443eb5229f088f5cf70d4 523 main/binary-amd64/Packages.gz
  ebfdd91188038b3129755d360695040c669537b9 100 main/binary-amd64/Release
- 2746729255b8abd7a4632b05b2b436224cd300f3 753 main/binary-arm64/Packages
- 30497538eb55bafaa4cee52892f954481a43616a 523 main/binary-arm64/Packages.gz
+ c261f53462f225b05afc5514ba57be32e718418c 753 main/binary-arm64/Packages
+ e70aa8c71d20115475ef6fd28940e81f1d742aaf 519 main/binary-arm64/Packages.gz
  5b356b16e3473250170a77bf7cf9f2181956325e 100 main/binary-arm64/Release
 SHA256:
- b953d28e462e6c06b3a3a1c4a04cfc00f63bfc2c8d4ddaad2b0aece2ed8d1034 753 main/binary-amd64/Packages
- af75df194a70a3fa11c51134c4a6a75359938ca62d71bd67e01699ce42d1615c 520 main/binary-amd64/Packages.gz
+ 4e95f57c27fa1e1cc4d499d25af6fc6f1616bf29905534faebd6ce315c16b414 753 main/binary-amd64/Packages
+ bfaf4cb55610c113c827116545892236fa419c3ba6816fe7f1eb50dee6da8e80 523 main/binary-amd64/Packages.gz
  69d4f347ab5c9248201586a6b1cb3b63a34a629af6d4fb175c36933d663fa83a 100 main/binary-amd64/Release
- 1edff2b4606c6874ed7fe3f78c163bfb02e9560da28ff186b3bf3c9c137243f8 753 main/binary-arm64/Packages
- 4af2a49d018d50eea32de7ed3d0409040e4803f264e9c942a942d538636ef839 523 main/binary-arm64/Packages.gz
+ 1e5f87253c8c02f550b45a8fbcec91a6fffa96871c260c89a377c951df118aea 753 main/binary-arm64/Packages
+ bef48cab0ae97b6821b5261a1610b50341b18ac37bdf554db01c7f4123fa308e 519 main/binary-arm64/Packages.gz
  f0250eeaf9792321ea92d9d03a4c07390c6b99863757a8c81691c741da2bc17e 100 main/binary-arm64/Release
