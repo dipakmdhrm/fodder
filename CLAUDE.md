@@ -140,6 +140,7 @@ code, run `cargo build --workspace` (or `./install.sh`) first, or the daemon wil
 - **`reminder.rs`** - the daily reading-reminder task: fires at the local `HH:MM` only when enabled, there are unread articles, **and the viewer is closed**; reschedules daily and recomputes on `reminder_reload`.
 - **`tray.rs`** - the `ksni` StatusNotifierItem tray (Open / Refresh all / Quit; left-click opens). Registration is **best-effort** - on hosts without an SNI tray (e.g. vanilla GNOME Shell) it logs and degrades, and the daemon keeps polling/notifying. Uses the themed `application-rss+xml` icon so it renders without our app icon installed.
 - **`viewer_proc.rs`** - on-demand viewer process management: spawns the single `fodder` child on an open request (navigation target + `--webkit` passed as CLI args, restored from `ReadingState` on a plain "Show"), reaps it on exit, and kills it on daemon shutdown.
+- **`self_update.rs`** - self-restart on in-place binary replacement (release builds only): polls the installed `fodderd`'s file signature and, when a package upgrade swaps it out, sets a re-exec flag and triggers shutdown; `main` then tears down socket/tray/viewer and `exec`s the new binary in the same session, so the tray survives `apt upgrade` instead of vanishing until next login. The deb `prerm` accordingly no longer kills the daemon on upgrade (rpm/Arch scripts already skip upgrades).
 
 ### `fodder` (viewer)
 
@@ -169,5 +170,6 @@ Tests live next to the code in `core/` (plus one integration file), and the daem
 - **`core/tests/conditional_get.rs`** - the conditional-GET path against a `wiremock` server: conditional headers actually sent (verified via the recorded request), 304 handling, validator capture, 429 with seconds and HTTP-date, and non-2xx -> error.
 - **`fodder/src/reader.rs`** - HTML->Pango: scripts stripped, basic formatting converted, entities escaped, safe links kept.
 - **`fodderd/src/reminder.rs`** - the next-occurrence time math stays within a day.
+- **`fodderd/src/self_update.rs`** - the binary-signature comparison detects an in-place replacement (and a missing path reads as `None`); the watch loop and `exec` handoff are platform glue, not unit-tested.
 
 The GTK4 widget code in `fodder/src/app.rs`, the tokio<->glib bridge, and the daemon's async task wiring are **not** unit-tested; the daemon's IPC/lifecycle behavior is exercised manually via the `ctl` example and isolated shell runs.

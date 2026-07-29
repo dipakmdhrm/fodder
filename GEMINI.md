@@ -85,7 +85,7 @@ Skip new tests only when a change genuinely has no testable behavior (docs, comm
 - `fodderd/`: the headless daemon - single-instance socket guard, IPC server, poll scheduler, batched actionable notifications + a daily reading reminder, the `ksni` tray (graceful-degrade where no SNI host exists), and on-demand viewer spawn/reap. Config is live-reloaded on a `ReloadConfig` message. The daemon also remembers the viewer's last-read article + mode (in memory) and restores it on the next open.
 - `fodder/`: the GTK4 viewer - 3-pane UI, the tokio<->glib bridge, the IPC client, and the light/WebKit reader. The WebKit view uses a dedicated `WebContext` and `terminate_web_process()` so its subprocesses' memory is reclaimed on toggle-back.
 
-**Process model:** `fodderd` is primary and resident; `fodder` is spawned on demand and freed on close. Exactly one daemon and one viewer, enforced via the runtime socket (which also carries IPC). Storage: `~/.config/fodder/config.toml` and `~/.local/share/fodder/db.sqlite` (WAL).
+**Process model:** `fodderd` is primary and resident; `fodder` is spawned on demand and freed on close. Exactly one daemon and one viewer, enforced via the runtime socket (which also carries IPC). Storage: `~/.config/fodder/config.toml` and `~/.local/share/fodder/db.sqlite` (WAL). On a package upgrade (release builds), the resident daemon detects its replaced binary (`fodderd/src/self_update.rs`) and re-execs the new one in place, so the tray survives `apt upgrade`; the deb `prerm` therefore only stops the daemon on removal, not upgrade.
 
 ## Building and Running
 

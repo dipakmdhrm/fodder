@@ -1,9 +1,13 @@
 #!/bin/bash
 set -e
 
-# Stop any running daemon/viewer before removal or upgrade so the new binaries
-# take over cleanly.
-pkill -x fodderd 2>/dev/null || true
-pkill -x fodder 2>/dev/null || true
+# Only stop the daemon/viewer on an actual removal. On upgrade (dpkg calls this
+# with "upgrade <new-version>") we deliberately leave the running daemon alone:
+# it detects its replaced binary and re-execs onto the new version itself (see
+# fodderd's self_update), so the tray never disappears mid-upgrade.
+if [ "$1" = "remove" ]; then
+    pkill -x fodderd 2>/dev/null || true
+    pkill -x fodder 2>/dev/null || true
+fi
 
 exit 0
