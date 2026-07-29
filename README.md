@@ -48,9 +48,14 @@ cargo test --workspace      # run the test suite
 ./install.sh                # release build → ~/.local/bin, icon + .desktop → ~/.local/share
 ```
 
-This installs the `fodderd`/`fodder` binaries, the app icon, and a desktop
+This installs the `fodderd`/`fodder` binaries, the app icons, and a desktop
 entry so **Fodder Reader** appears in your app menu. Ensure `~/.local/bin` is on
-your `PATH`. Remove it all with `./uninstall.sh` (your feeds/config are kept).
+your `PATH`.
+
+```bash
+./uninstall.sh              # remove app files; keep your feeds/config
+./uninstall.sh --purge      # also delete feeds, database, and config
+```
 
 For verifying the desktop integration across environments, see
 [docs/cross-desktop-testing.md](docs/cross-desktop-testing.md).

@@ -7,15 +7,19 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 ## Unreleased
 
 ### M6 — Desktop integration
-- App icon (`io.github.dipakmdhrm.Fodder.svg`) and a desktop entry so **Fodder
-  Reader** appears in the app menu with a proper icon/name.
-- Per-user `install.sh` / `uninstall.sh` (binaries → `~/.local/bin`, icon +
+- App icon set (scalable SVG + 16–512 px PNGs, hicolor tree) and a desktop
+  entry so **Fodder Reader** appears in the app menu with a proper icon/name.
+- Per-user `install.sh` / `uninstall.sh` (binaries → `~/.local/bin`, icons +
   `.desktop` → `~/.local/share`), refreshing the icon/desktop caches.
-- Wired the app icon into the tray, desktop notifications (with a
-  `desktop-entry` hint), and the autostart entry; window↔app matching via
-  `StartupWMClass`. App ID centralized as `fodder_core::APP_ID`.
+- Wired the branded icon into the tray, desktop notifications (with a
+  `desktop-entry` hint), the window/menu, and the autostart entry; window↔app
+  matching via `StartupWMClass`. App ID centralized as `fodder_core::APP_ID`.
 - Cross-desktop test checklist (`docs/cross-desktop-testing.md`) covering
   GNOME / KDE / XFCE / Sway, including the vanilla-GNOME tray degrade path.
+- Launching from the app menu now starts the **daemon** (tray + polling) and
+  opens the viewer: the desktop entry runs `fodderd --open-viewer` (a new flag
+  that spawns the viewer once the daemon is up), while the autostart entry stays
+  headless (`fodderd`). If a daemon is already running, it just opens the viewer.
 
 ### Notifications & live settings
 - Notification preferences: a master **Enable notifications** switch gating

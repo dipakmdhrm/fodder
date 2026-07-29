@@ -34,6 +34,8 @@ impl Tray for FodderTray {
     }
 
     fn icon_name(&self) -> String {
+        // Resolves once the icon set is installed (./install.sh). Before any
+        // install it falls back to the host's default.
         APP_ID.to_string()
     }
 

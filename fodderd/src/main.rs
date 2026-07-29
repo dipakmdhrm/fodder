@@ -37,6 +37,10 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    // `--open-viewer` (used by the app-menu launcher) opens the viewer once the
+    // daemon is up. Autostart launches `fodderd` without it, staying headless.
+    let open_viewer = std::env::args().any(|arg| arg == "--open-viewer");
+
     let socket_path = paths::daemon_socket_path()?;
 
     // Enforce a single daemon. A second launch just asks the running one to
@@ -90,6 +94,11 @@ async fn main() -> Result<()> {
 
     let reminder_ctx = ctx.clone();
     let reminder_task = tokio::spawn(async move { reminder::run(reminder_ctx).await });
+
+    // Opened from the app menu → spawn the viewer now that the daemon is up.
+    if open_viewer {
+        let _ = ctx.open_tx.send(OpenRequest::Show);
+    }
 
     // Run until interrupted or the tray's Quit is chosen.
     wait_for_shutdown(&shutdown).await;
