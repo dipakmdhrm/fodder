@@ -25,212 +25,19 @@ jobs:
       - id: v
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-  # .deb (amd64 + arm64)
-  build-deb:
+  # Build every package via the shared reusable workflow that CI also runs, so
+  # the tag build is identical to what was already validated on the PR.
+  build:
     needs: get-version
-    strategy:
-      matrix:
-        include:
-          - { runner: ubuntu-latest,     arch: amd64 }
-          - { runner: ubuntu-24.04-arm,  arch: arm64 }
-    runs-on: ${{ matrix.runner }}
-    env:
-      VERSION: ${{ needs.get-version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install build + runtime deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build release binaries
-        run: cargo build --release --workspace --locked
-
-      - name: Stage and build .deb
-        run: |
-          STAGING=$(mktemp -d)
-          mkdir -p "$STAGING/DEBIAN" "$STAGING/usr/bin" \
-                   "$STAGING/usr/share/applications" "$STAGING/usr/share/icons"
-
-          install -m0755 target/release/fodderd "$STAGING/usr/bin/fodderd"
-          install -m0755 target/release/fodder  "$STAGING/usr/bin/fodder"
-          install -m0644 data/applications/io.github.dipakmdhrm.Fodder.desktop \
-            "$STAGING/usr/share/applications/"
-          cp -r data/icons/hicolor "$STAGING/usr/share/icons/hicolor"
-
-          for f in postinst prerm postrm; do
-            install -m0755 "packaging/deb/$f" "$STAGING/DEBIAN/$f"
-          done
-          sed -e "s/@VERSION@/${VERSION}/" -e "s/@ARCH@/${{ matrix.arch }}/" \
-            packaging/deb/control.template > "$STAGING/DEBIAN/control"
-
-          dpkg-deb --root-owner-group --build "$STAGING" \
-            "fodder_${VERSION}_${{ matrix.arch }}.deb"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deb-${{ matrix.arch }}
-          path: fodder_*.deb
-
-  # .rpm (x86_64 + aarch64), built inside Fedora
-  build-rpm:
-    needs: get-version
-    strategy:
-      matrix:
-        include:
-          - { runner: ubuntu-latest,    rpmarch: x86_64 }
-          - { runner: ubuntu-24.04-arm, rpmarch: aarch64 }
-    runs-on: ${{ matrix.runner }}
-    container: fedora:latest
-    env:
-      VERSION: ${{ needs.get-version.outputs.version }}
-    steps:
-      - name: Install build tools
-        run: |
-          # tar + zstd are needed by actions/cache inside the minimal container.
-          dnf install -y git rpm-build cargo rust gcc tar zstd \
-            gtk4-devel libadwaita-devel webkitgtk6.0-devel
-
-      - uses: actions/checkout@v4
-
-      # Cache the expensive dependency builds (gtk4-sys, webkit6-sys, ring,
-      # bundled SQLite, ...) so only the workspace crates recompile. This is
-      # what makes the deb job fast; the container job lacked it. rpmbuild
-      # normally compiles in an ephemeral BUILD dir, so we redirect cargo's
-      # target dir to a stable, cacheable path (see the spec's cargo_target
-      # macro + --define below) and point rust-cache at it.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: rpm-${{ matrix.rpmarch }}
-          workspaces: ". -> rpm-target"
-
-      - name: Build .rpm
-        run: |
-          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          SRC=$(mktemp -d)
-          mkdir "$SRC/fodder-${VERSION}"
-          cp -r Cargo.toml Cargo.lock core fodderd fodder data LICENSE \
-            "$SRC/fodder-${VERSION}/"
-          tar -czf "rpmbuild/SOURCES/fodder-${VERSION}.tar.gz" -C "$SRC" "fodder-${VERSION}"
-
-          CHANGELOG_DATE=$(date "+%a %b %d %Y")
-          sed -e "s/@VERSION@/${VERSION}/g" -e "s/@CHANGELOG_DATE@/${CHANGELOG_DATE}/g" \
-            packaging/rpm/fodder.spec > rpmbuild/SPECS/fodder.spec
-
-          # Compile into the cached target dir shared with rust-cache above.
-          rpmbuild --define "_topdir ${PWD}/rpmbuild" \
-            --define "cargo_target ${GITHUB_WORKSPACE}/rpm-target" \
-            -bb rpmbuild/SPECS/fodder.spec
-          find rpmbuild/RPMS -name '*.rpm' -exec cp {} . \;
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rpm-${{ matrix.rpmarch }}
-          path: "*.rpm"
-
-  # Arch package (x86_64), built inside Arch.
-  # Non-blocking: Arch's makepkg injects hardening link flags
-  # (-Wl,--as-needed -Wl,--gc-sections, lld) that drop the bundled-SQLite
-  # static C symbols at link time. Tracked separately; don't hold the
-  # release (deb/rpm/flatpak) hostage to it.
-  build-arch:
-    needs: get-version
-    runs-on: ubuntu-latest
-    container: archlinux:latest
-    continue-on-error: true
-    env:
-      VERSION: ${{ needs.get-version.outputs.version }}
-    steps:
-      - name: Install build tools
-        run: |
-          pacman -Syu --noconfirm git base-devel rust cmake \
-            gtk4 libadwaita webkitgtk-6.0
-
-      - uses: actions/checkout@v4
-
-      - name: Build pacman package
-        run: |
-          mkdir -p arch-build
-          SRC=$(mktemp -d)
-          mkdir "$SRC/fodder-${VERSION}"
-          cp -r Cargo.toml Cargo.lock core fodderd fodder data LICENSE \
-            "$SRC/fodder-${VERSION}/"
-          tar -czf "arch-build/fodder-${VERSION}.tar.gz" -C "$SRC" "fodder-${VERSION}"
-
-          sed "s/@VERSION@/${VERSION}/g" packaging/arch/PKGBUILD > arch-build/PKGBUILD
-          cp packaging/arch/fodder.install arch-build/
-
-          useradd -m builder
-          chown -R builder:builder arch-build
-          su builder -c "cd arch-build && makepkg --noconfirm --skipinteg"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arch
-          path: arch-build/*.pkg.tar.zst
-
-  # Flatpak bundle + per-arch ostree repo (amd64 + arm64)
-  build-flatpak:
-    needs: get-version
-    # Non-blocking: Flatpak is the trickiest target; a failure here must not
-    # block the deb/rpm/arch release or the apt repo publish.
-    continue-on-error: true
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { runner: ubuntu-latest,    arch: x86_64 }
-          - { runner: ubuntu-24.04-arm, arch: aarch64 }
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-
-      # flatpak-builder validates its cache by source checksum, so this safely
-      # skips rebuilding unchanged modules (big win when re-running the same
-      # tag; a cache miss just falls back to a full build).
-      - uses: actions/cache@v4
-        with:
-          path: .flatpak-builder
-          key: flatpak-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/**', 'Cargo.lock') }}
-          restore-keys: |
-            flatpak-${{ matrix.arch }}-
-
-      - name: Install flatpak-builder + runtime
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
-          sudo flatpak remote-add --if-not-exists flathub \
-            https://flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install -y flathub \
-            org.gnome.Platform//47 org.gnome.Sdk//47
-
-      - name: Build flatpak
-        run: |
-          flatpak-builder --user --disable-rofiles-fuse --force-clean \
-            --repo=repo build-dir \
-            packaging/flatpak/io.github.dipakmdhrm.Fodder.yml
-          flatpak build-bundle repo \
-            "fodder-${{ matrix.arch }}.flatpak" io.github.dipakmdhrm.Fodder
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: flatpak-bundle-${{ matrix.arch }}
-          path: fodder-*.flatpak
-      - uses: actions/upload-artifact@v4
-        with:
-          name: flatpak-repo-${{ matrix.arch }}
-          path: repo
+    uses: ./.github/workflows/build-packages.yml
+    with:
+      version: ${{ needs.get-version.outputs.version }}
 
   # Publish auto-update repos (apt + flatpak) to gh-pages
   #
   # Best-effort: a failure here does not block the GitHub Release below.
   pages:
-    needs: [get-version, build-deb, build-flatpak]
+    needs: [get-version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -363,7 +170,7 @@ jobs:
 
   # GitHub Release with all artifacts
   release:
-    needs: [get-version, build-deb, build-rpm, build-arch, build-flatpak]
+    needs: [get-version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write

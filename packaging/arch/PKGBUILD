@@ -6,16 +6,36 @@ pkgdesc="Lightweight RSS/Atom/JSON feed reader"
 arch=('x86_64')
 url="https://github.com/dipakmdhrm/fodder"
 license=('MIT')
-depends=('gtk4' 'libadwaita' 'webkitgtk-6.0')
-makedepends=('cargo' 'cmake')
+depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'sqlite')
+makedepends=('cargo')
 install=fodder.install
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
+prepare() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    # Link the system SQLite instead of compiling rusqlite's bundled copy.
+    # makepkg's hardening link flags (-Wl,--gc-sections / --as-needed via lld)
+    # drop the vendored sqlite3's static symbols at link time, and a distro
+    # package should use the shared system library anyway. Dropping the
+    # "bundled" feature makes libsqlite3-sys link against the system sqlite.
+    sed -i '/^rusqlite/s/"bundled", //' Cargo.toml
+}
+
 build() {
     cd "${srcdir}/${pkgname}-${pkgver}"
     export CARGO_TARGET_DIR=target
-    cargo build --release --workspace --locked
+    export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+    # makepkg injects hardening compiler/linker flags (function-sections +
+    # --gc-sections, lld, etc.) that garbage-collect ring's static C/asm
+    # objects at link time, giving "undefined symbol: ring_core_*". The
+    # deb/rpm builds succeed with plain cargo defaults, so clear these and
+    # build the same way.
+    unset RUSTFLAGS CARGO_BUILD_RUSTFLAGS CARGO_ENCODED_RUSTFLAGS \
+          CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
+    # Not --locked: prepare() edits Cargo.toml (drops a dependency feature),
+    # which would otherwise be reported as an out-of-date lockfile.
+    cargo build --release --workspace
 }
 
 package() {

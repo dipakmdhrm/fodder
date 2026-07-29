@@ -115,8 +115,8 @@ Per-user install without packaging: `./install.sh` / `./uninstall.sh [--purge]`.
 
 ### Continuous Integration
 
-`.github/workflows/ci.yml` runs on every pull request to `main`: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` (installing the GTK4/libadwaita/WebKitGTK dev libraries first). The tree is kept fmt-clean and clippy-clean.
+`.github/workflows/ci.yml` runs on every pull request to `main`: first `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` (installing the GTK4/libadwaita/WebKitGTK dev libraries first); then it builds all four packages via the shared reusable workflow so a release tag is just a repeat of an already-green build. The tree is kept fmt-clean and clippy-clean.
 
 ### Release Process
 
-`.github/workflows/release.yml` is triggered by a `v*` tag. It builds `.deb`, `.rpm`, an Arch `.pkg.tar.zst`, and Flatpak bundles (x86_64 + arm64; Arch is x86_64-only), attaches them all to a GitHub Release, and publishes GPG-signed **apt** and **flatpak** repositories to the `gh-pages` branch so `.deb` and Flatpak installs auto-update. Packaging sources are under `packaging/`; the full process and one-time setup (GPG key secret, GitHub Pages) are documented in `docs/RELEASING.md`.
+The four package builds (`.deb`, `.rpm`, an Arch `.pkg.tar.zst`, and Flatpak bundles; x86_64 + arm64, Arch x86_64-only) live in one reusable workflow, `.github/workflows/build-packages.yml`, called by both `ci.yml` and `release.yml`. `release.yml` is triggered by a `v*` tag: it runs that shared build, attaches all packages to a GitHub Release, and publishes GPG-signed **apt** and **flatpak** repositories to the `gh-pages` branch so `.deb` and Flatpak installs auto-update. The Arch build links the **system** SQLite (its PKGBUILD drops rusqlite's `bundled` feature) because makepkg's hardening link flags break the vendored static SQLite. Packaging sources are under `packaging/`; the full process and one-time setup (GPG key secret, GitHub Pages) are documented in `docs/RELEASING.md`.
