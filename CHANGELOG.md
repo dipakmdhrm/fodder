@@ -4,7 +4,15 @@ All notable changes to Fodder Reader are documented here. The format loosely
 follows [Keep a Changelog](https://keepachangelog.com/). The project is
 pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
-## Unreleased
+## 0.1.1
+
+### Build & release
+- Faster, leaner packages: RPMs no longer ship the unused
+  `-debuginfo`/`-debugsource` subpackages (the release binaries are already
+  stripped), and the containerized rpm and Flatpak builds now cache cargo
+  artifacts across releases so dependency crates aren't recompiled every time.
+
+## 0.1.0
 
 ### Build & release
 - GitHub Actions **CI** (`cargo fmt --check`, `clippy -D warnings`, tests) and a
