@@ -72,6 +72,15 @@ pub fn mark_read(conn: &Connection, article_id: i64) -> Result<(), DbError> {
     Ok(())
 }
 
+/// Mark a single article unread.
+pub fn mark_unread(conn: &Connection, article_id: i64) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE articles SET is_read = 0 WHERE id = ?1",
+        params![article_id],
+    )?;
+    Ok(())
+}
+
 /// Mark all articles read, optionally scoped to one feed (`None` = every feed).
 pub fn mark_all_read(conn: &Connection, feed_id: Option<i64>) -> Result<(), DbError> {
     match feed_id {
@@ -202,6 +211,16 @@ mod tests {
         mark_all_read(db.conn(), Some(feed_id)).unwrap();
         assert!(unread_counts(db.conn()).unwrap().get(&feed_id).is_none());
         assert_eq!(total_unread(db.conn()).unwrap(), 0);
+    }
+
+    #[test]
+    fn mark_read_then_unread_toggles() {
+        let (mut db, feed_id) = setup();
+        let ids = insert_new_articles(db.conn_mut(), feed_id, &[new_article("a", "A")]).unwrap();
+        mark_read(db.conn(), ids[0]).unwrap();
+        assert_eq!(total_unread(db.conn()).unwrap(), 0);
+        mark_unread(db.conn(), ids[0]).unwrap();
+        assert_eq!(total_unread(db.conn()).unwrap(), 1);
     }
 
     #[test]

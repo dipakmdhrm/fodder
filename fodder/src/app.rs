@@ -51,16 +51,28 @@ pub struct App {
     web_back: gtk::Button,
     web_forward: gtk::Button,
 
-    // Row → id maps, parallel to the list rows.
+    // Row → data maps, parallel to the list rows.
     feed_ids: RefCell<Vec<Option<i64>>>,
+    feed_urls: RefCell<Vec<Option<String>>>,
     article_ids: RefCell<Vec<i64>>,
     article_titles: RefCell<Vec<gtk::Label>>,
+    article_urls: RefCell<Vec<Option<String>>>,
+    article_read: RefCell<Vec<bool>>,
 
     selected_feed: Cell<Option<i64>>,
     current_article: Cell<Option<i64>>,
     current_url: RefCell<Option<String>>,
     current_content: RefCell<Option<String>>,
     suppress: Cell<bool>,
+
+    // Right-click context menus and the row they target.
+    feed_popover: gtk::PopoverMenu,
+    article_popover: gtk::PopoverMenu,
+    ctx_feed: Cell<Option<i64>>,
+    ctx_feed_url: RefCell<Option<String>>,
+    ctx_article: Cell<Option<i64>>,
+    ctx_article_url: RefCell<Option<String>>,
+    ctx_article_read: Cell<bool>,
 
     db: DbHandle,
     rt: tokio::runtime::Runtime,
@@ -272,6 +284,16 @@ fn assemble(
         .build()
         .unwrap_or_default();
 
+    // Context-menu popovers. Parent them to the panes (not the lists): a popover
+    // parented inside the ScrolledWindow gets its height clamped to the visible
+    // area and shows a scrollbar. The panes sit outside the scroll.
+    let feed_popover = gtk::PopoverMenu::from_model(Some(&gio::Menu::new()));
+    feed_popover.set_parent(&feeds_pane);
+    feed_popover.set_has_arrow(false);
+    let article_popover = gtk::PopoverMenu::from_model(Some(&gio::Menu::new()));
+    article_popover.set_parent(&articles_pane);
+    article_popover.set_has_arrow(false);
+
     let this = Rc::new(App {
         window,
         inner_split,
@@ -290,13 +312,23 @@ fn assemble(
         web_back: web_back.clone(),
         web_forward: web_forward.clone(),
         feed_ids: RefCell::new(Vec::new()),
+        feed_urls: RefCell::new(Vec::new()),
         article_ids: RefCell::new(Vec::new()),
         article_titles: RefCell::new(Vec::new()),
+        article_urls: RefCell::new(Vec::new()),
+        article_read: RefCell::new(Vec::new()),
         selected_feed: Cell::new(None),
         current_article: Cell::new(None),
         current_url: RefCell::new(None),
         current_content: RefCell::new(None),
         suppress: Cell::new(false),
+        feed_popover,
+        article_popover,
+        ctx_feed: Cell::new(None),
+        ctx_feed_url: RefCell::new(None),
+        ctx_article: Cell::new(None),
+        ctx_article_url: RefCell::new(None),
+        ctx_article_read: Cell::new(false),
         db,
         rt,
         http,
@@ -322,7 +354,148 @@ fn assemble(
         }
     });
 
+    setup_context_menus(&this);
     this
+}
+
+/// Install right-click context menus (and their action groups) on both lists.
+fn setup_context_menus(this: &Rc<App>) {
+    // --- Feed list ---
+    let group = gio::SimpleActionGroup::new();
+    add_action(&group, "refresh", this, |app| {
+        let _ = app.cmd_tx.send(IpcMessage::RefreshNow {
+            feed_id: app.ctx_feed.get(),
+        });
+    });
+    add_action(&group, "markread", this, |app| {
+        app.do_mark_all_read(app.ctx_feed.get());
+    });
+    add_action(&group, "copyurl", this, |app| {
+        if let Some(url) = app.ctx_feed_url.borrow().clone() {
+            app.window.clipboard().set_text(&url);
+        }
+    });
+    add_action(&group, "remove", this, |app| {
+        if let Some(id) = app.ctx_feed.get() {
+            app.remove_feed(id);
+        }
+    });
+    // Action groups go on the window so the pane-parented popovers can resolve
+    // them (action lookup walks up from the popover).
+    this.window.insert_action_group("feedctx", Some(&group));
+
+    let gesture = gtk::GestureClick::new();
+    gesture.set_button(gdk::BUTTON_SECONDARY);
+    let app = this.clone();
+    gesture.connect_pressed(move |_, _, x, y| {
+        let Some(row) = app.feeds_list.row_at_y(y as i32) else {
+            return;
+        };
+        app.feeds_list.select_row(Some(&row));
+        let idx = row.index() as usize;
+        let feed_id = app.feed_ids.borrow().get(idx).copied().flatten();
+        let url = app.feed_urls.borrow().get(idx).cloned().flatten();
+        app.ctx_feed.set(feed_id);
+        *app.ctx_feed_url.borrow_mut() = url;
+        app.feed_popover.set_menu_model(Some(&build_feed_menu(feed_id.is_some())));
+        point_popover_at(&app.feed_popover, &app.feeds_list, x, y);
+        app.feed_popover.popup();
+    });
+    this.feeds_list.add_controller(gesture);
+
+    // --- Article list ---
+    let group = gio::SimpleActionGroup::new();
+    add_action(&group, "toggleread", this, |app| app.toggle_ctx_article_read());
+    add_action(&group, "openbrowser", this, |app| {
+        if let Some(url) = app.ctx_article_url.borrow().clone() {
+            open_uri(&app.window, &url);
+        }
+    });
+    add_action(&group, "copylink", this, |app| {
+        if let Some(url) = app.ctx_article_url.borrow().clone() {
+            app.window.clipboard().set_text(&url);
+        }
+    });
+    this.window.insert_action_group("artctx", Some(&group));
+
+    let gesture = gtk::GestureClick::new();
+    gesture.set_button(gdk::BUTTON_SECONDARY);
+    let app = this.clone();
+    gesture.connect_pressed(move |_, _, x, y| {
+        let Some(row) = app.articles_list.row_at_y(y as i32) else {
+            return;
+        };
+        app.articles_list.select_row(Some(&row));
+        let idx = row.index() as usize;
+        let Some(id) = app.article_ids.borrow().get(idx).copied() else {
+            return;
+        };
+        let url = app.article_urls.borrow().get(idx).cloned().flatten();
+        let is_read = app.article_read.borrow().get(idx).copied().unwrap_or(false);
+        app.ctx_article.set(Some(id));
+        *app.ctx_article_url.borrow_mut() = url;
+        app.ctx_article_read.set(is_read);
+        app.article_popover
+            .set_menu_model(Some(&build_article_menu(is_read)));
+        point_popover_at(&app.article_popover, &app.articles_list, x, y);
+        app.article_popover.popup();
+    });
+    this.articles_list.add_controller(gesture);
+}
+
+/// Point a popover at (x, y) given in `source`'s coordinate space, translating
+/// into the popover's parent coordinate space (the pane it's parented to).
+fn point_popover_at(popover: &gtk::PopoverMenu, source: &gtk::ListBox, x: f64, y: f64) {
+    let point = gtk::graphene::Point::new(x as f32, y as f32);
+    let (px, py) = popover
+        .parent()
+        .and_then(|parent| source.compute_point(&parent, &point))
+        .map(|p| (p.x() as i32, p.y() as i32))
+        .unwrap_or((x as i32, y as i32));
+    popover.set_pointing_to(Some(&gdk::Rectangle::new(px, py, 1, 1)));
+}
+
+/// Register a `SimpleAction` whose activation runs `f` with the app.
+fn add_action(
+    group: &gio::SimpleActionGroup,
+    name: &str,
+    this: &Rc<App>,
+    f: impl Fn(&Rc<App>) + 'static,
+) {
+    let action = gio::SimpleAction::new(name, None);
+    let app = this.clone();
+    action.connect_activate(move |_, _| f(&app));
+    group.add_action(&action);
+}
+
+fn build_feed_menu(is_real_feed: bool) -> gio::Menu {
+    let menu = gio::Menu::new();
+    menu.append(Some("Refresh"), Some("feedctx.refresh"));
+    menu.append(Some("Mark all as read"), Some("feedctx.markread"));
+    if is_real_feed {
+        menu.append(Some("Copy feed URL"), Some("feedctx.copyurl"));
+        menu.append(Some("Remove feed"), Some("feedctx.remove"));
+    }
+    menu
+}
+
+fn build_article_menu(is_read: bool) -> gio::Menu {
+    let menu = gio::Menu::new();
+    let toggle_label = if is_read { "Mark as unread" } else { "Mark as read" };
+    menu.append(Some(toggle_label), Some("artctx.toggleread"));
+    menu.append(Some("Open in browser"), Some("artctx.openbrowser"));
+    menu.append(Some("Copy link"), Some("artctx.copylink"));
+    menu
+}
+
+/// Open a URI in the external browser.
+fn open_uri(window: &adw::ApplicationWindow, uri: &str) {
+    let launcher = gtk::UriLauncher::new(uri);
+    launcher.launch(Some(window), gio::Cancellable::NONE, |res| {
+        if let Err(e) = res {
+            tracing::warn!("open in browser failed: {e}");
+        }
+    });
 }
 
 fn wire_signals(
@@ -421,18 +594,22 @@ impl App {
         self.suppress.set(true);
         clear_list(&self.feeds_list);
         let mut ids: Vec<Option<i64>> = Vec::with_capacity(feeds.len() + 1);
+        let mut urls: Vec<Option<String>> = Vec::with_capacity(feeds.len() + 1);
 
         // "All Articles" aggregate row.
         self.feeds_list.append(&feed_row("All Articles", total, false));
         ids.push(None);
+        urls.push(None);
 
         for feed in &feeds {
             let count = unread.get(&feed.id).copied().unwrap_or(0);
             let has_error = feed.last_error.is_some();
             self.feeds_list.append(&feed_row(&feed.title, count, has_error));
             ids.push(Some(feed.id));
+            urls.push(Some(feed.url.clone()));
         }
         *self.feed_ids.borrow_mut() = ids;
+        *self.feed_urls.borrow_mut() = urls;
         self.suppress.set(false);
 
         // Decide which feed to show.
@@ -485,14 +662,20 @@ impl App {
         clear_list(&self.articles_list);
         let mut ids = Vec::with_capacity(arts.len());
         let mut labels = Vec::with_capacity(arts.len());
+        let mut urls = Vec::with_capacity(arts.len());
+        let mut reads = Vec::with_capacity(arts.len());
         for art in &arts {
             let (row, title_label) = article_row(art);
             self.articles_list.append(&row);
             ids.push(art.id);
             labels.push(title_label);
+            urls.push(art.url.clone());
+            reads.push(art.is_read);
         }
         *self.article_ids.borrow_mut() = ids;
         *self.article_titles.borrow_mut() = labels;
+        *self.article_urls.borrow_mut() = urls;
+        *self.article_read.borrow_mut() = reads;
         self.suppress.set(false);
 
         if arts.is_empty() {
@@ -624,12 +807,7 @@ impl App {
 
     /// Mark one article read: update the DB, un-bold its row, refresh badges.
     fn mark_read(self: &Rc<Self>, id: i64) {
-        // Un-bold the row in place if it's the selected one.
-        if let Some(pos) = self.article_ids.borrow().iter().position(|a| *a == id) {
-            if let Some(label) = self.article_titles.borrow().get(pos) {
-                label.set_text(&label.text());
-            }
-        }
+        self.update_article_row_read(id, true);
         let this = self.clone();
         runtime::run_db(
             self.rt.handle(),
@@ -639,14 +817,61 @@ impl App {
                 if let Err(e) = res {
                     tracing::warn!("mark_read failed: {e}");
                 }
-                // Refresh unread badges, preserving the current view.
                 this.refresh_badges();
             },
         );
     }
 
+    /// Toggle the right-clicked article's read state.
+    fn toggle_ctx_article_read(self: &Rc<Self>) {
+        let Some(id) = self.ctx_article.get() else {
+            return;
+        };
+        let was_read = self.ctx_article_read.get();
+        let this = self.clone();
+        runtime::run_db(
+            self.rt.handle(),
+            self.db.clone(),
+            move |c| {
+                if was_read {
+                    articles::mark_unread(c, id)
+                } else {
+                    articles::mark_read(c, id)
+                }
+            },
+            move |res| match res {
+                Ok(()) => {
+                    this.update_article_row_read(id, !was_read);
+                    this.refresh_badges();
+                }
+                Err(e) => tracing::warn!("toggle read failed: {e}"),
+            },
+        );
+    }
+
+    /// Restyle an article row (bold = unread) and keep `article_read` in sync.
+    fn update_article_row_read(&self, id: i64, is_read: bool) {
+        let pos = self.article_ids.borrow().iter().position(|a| *a == id);
+        if let Some(pos) = pos {
+            if let Some(label) = self.article_titles.borrow().get(pos) {
+                if is_read {
+                    label.set_text(&label.text());
+                } else {
+                    label.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&label.text())));
+                }
+            }
+            if let Some(read) = self.article_read.borrow_mut().get_mut(pos) {
+                *read = is_read;
+            }
+        }
+    }
+
     fn mark_all_read(self: &Rc<Self>) {
-        let feed_id = self.selected_feed.get();
+        self.do_mark_all_read(self.selected_feed.get());
+    }
+
+    /// Mark all read for a feed (`None` = every feed) and refresh the view.
+    fn do_mark_all_read(self: &Rc<Self>, feed_id: Option<i64>) {
         let this = self.clone();
         runtime::run_db(
             self.rt.handle(),
@@ -693,15 +918,19 @@ impl App {
         self.suppress.set(true);
         clear_list(&self.feeds_list);
         let mut ids: Vec<Option<i64>> = Vec::with_capacity(feeds.len() + 1);
+        let mut urls: Vec<Option<String>> = Vec::with_capacity(feeds.len() + 1);
         self.feeds_list.append(&feed_row("All Articles", total, false));
         ids.push(None);
+        urls.push(None);
         for feed in &feeds {
             let count = unread.get(&feed.id).copied().unwrap_or(0);
             self.feeds_list
                 .append(&feed_row(&feed.title, count, feed.last_error.is_some()));
             ids.push(Some(feed.id));
+            urls.push(Some(feed.url.clone()));
         }
         *self.feed_ids.borrow_mut() = ids;
+        *self.feed_urls.borrow_mut() = urls;
         let idx = self
             .feed_ids
             .borrow()
@@ -915,9 +1144,12 @@ impl App {
     }
 
     fn remove_selected_feed(self: &Rc<Self>) {
-        let Some(feed_id) = self.selected_feed.get() else {
-            return; // "All Articles" selected — nothing to remove.
-        };
+        if let Some(feed_id) = self.selected_feed.get() {
+            self.remove_feed(feed_id);
+        }
+    }
+
+    fn remove_feed(self: &Rc<Self>, feed_id: i64) {
         let dialog = adw::AlertDialog::new(
             Some("Remove feed?"),
             Some("This unsubscribes the feed and deletes its stored articles."),
@@ -1161,7 +1393,15 @@ fn format_meta(article: &Article) -> String {
 }
 
 fn clear_list(list: &gtk::ListBox) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
+    // Remove only rows. The list also parents a context-menu popover, which is
+    // not a row — `ListBox::remove` can't remove it, so a naive
+    // first_child()/remove() loop would spin forever on it.
+    let mut child = list.first_child();
+    while let Some(widget) = child {
+        let next = widget.next_sibling();
+        if let Ok(row) = widget.downcast::<gtk::ListBoxRow>() {
+            list.remove(&row);
+        }
+        child = next;
     }
 }

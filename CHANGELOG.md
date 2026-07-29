@@ -33,6 +33,9 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
   (no scripts, no network). Selectable text, clickable links.
 - Actions: refresh-now (IPC `RefreshNow`), mark-all-read, open-in-browser,
   add feed (raw URL for now), remove feed (with confirm + cascade delete).
+- Right-click context menus: on a feed — refresh this feed, mark all read,
+  copy feed URL, remove feed; on an article — mark read/unread, open in
+  browser, copy link.
 - tokio↔glib async bridge: blocking SQLite on the tokio pool, results applied
   on the GTK main thread via `spawn_future_local`.
 - IPC client: `ViewerHello` handshake, live reload on `FeedsChanged`,
