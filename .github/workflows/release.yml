@@ -118,11 +118,16 @@ jobs:
           name: rpm-${{ matrix.rpmarch }}
           path: "*.rpm"
 
-  # Arch package (x86_64), built inside Arch
+  # Arch package (x86_64), built inside Arch.
+  # Non-blocking: Arch's makepkg injects hardening link flags
+  # (-Wl,--as-needed -Wl,--gc-sections, lld) that drop the bundled-SQLite
+  # static C symbols at link time. Tracked separately; don't hold the
+  # release (deb/rpm/flatpak) hostage to it.
   build-arch:
     needs: get-version
     runs-on: ubuntu-latest
     container: archlinux:latest
+    continue-on-error: true
     env:
       VERSION: ${{ needs.get-version.outputs.version }}
     steps:
@@ -220,8 +225,12 @@ jobs:
           # Allow non-interactive (loopback) signing so reprepro/gpg don't try to
           # pop a pinentry prompt on the headless runner.
           mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          printf 'pinentry-mode loopback\n' >> ~/.gnupg/gpg.conf
-          printf 'allow-loopback-pinentry\nbatch\n' >> ~/.gnupg/gpg-agent.conf
+          # `batch`/`no-tty` are gpg options and belong in gpg.conf; only
+          # `allow-loopback-pinentry` is a valid gpg-agent option. Putting
+          # `batch` in gpg-agent.conf makes the agent refuse to start, which
+          # surfaces later as gpgme "End of file" when reprepro signs.
+          printf 'pinentry-mode loopback\nno-tty\nbatch\n' >> ~/.gnupg/gpg.conf
+          printf 'allow-loopback-pinentry\n' >> ~/.gnupg/gpg-agent.conf
           gpgconf --kill gpg-agent || true
           echo "$APT_SIGNING_KEY" | gpg --batch --import
           FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
