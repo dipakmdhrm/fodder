@@ -753,6 +753,7 @@ impl App {
         }
 
         if let Some(old) = self.webview.borrow_mut().take() {
+            old.terminate_web_process();
             self.webkit_holder.remove(&old);
         }
 
@@ -795,11 +796,14 @@ impl App {
         }
     }
 
-    /// Drop the WebView (releasing its subprocesses) and hide the nav buttons.
+    /// Drop the WebView and reclaim its subprocesses, then hide the nav buttons.
     fn destroy_webview(&self) {
         if let Some(webview) = self.webview.borrow_mut().take() {
+            // Kill the renderer promptly rather than letting WebKit pool it for
+            // reuse. Dropping the view then releases its dedicated context and
+            // ephemeral session, so the network process exits too.
+            webview.terminate_web_process();
             self.webkit_holder.remove(&webview);
-            // `webview` drops here → last ref gone → WebKit subprocesses exit.
         }
         self.web_back.set_visible(false);
         self.web_forward.set_visible(false);
@@ -1387,7 +1391,13 @@ fn configure_webview(url: Option<&str>, content: &str) -> webkit6::WebView {
     let session = webkit6::NetworkSession::new_ephemeral();
     session.set_itp_enabled(true); // intelligent tracking prevention
 
+    // A dedicated context (not WebKit's shared, app-lifetime default) owns this
+    // view's process cache, so dropping the view tears its processes down
+    // instead of leaving them pooled for reuse. Only the WebView refs the
+    // context/session, so they finalize when it's dropped.
+    let context = webkit6::WebContext::new();
     let webview = webkit6::WebView::builder()
+        .web_context(&context)
         .network_session(&session)
         .settings(&settings)
         .build();
