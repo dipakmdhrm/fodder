@@ -6,6 +6,12 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Session restore
+- The viewer reports what it's showing (article + light/web mode) to the daemon
+  over IPC; on the next plain open (app menu / tray) the daemon reopens that
+  article in the same mode. Kept in daemon memory only (resets on daemon
+  restart); no footprint cost — nothing is kept resident.
+
 ### M6 — Desktop integration
 - App icon set (scalable SVG + 16–512 px PNGs, hicolor tree) and a desktop
   entry so **Fodder Reader** appears in the app menu with a proper icon/name.

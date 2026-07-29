@@ -113,6 +113,19 @@ async fn handle_msg(
             ctx.reload_config();
             let _ = out_tx.send(IpcMessage::Ack);
         }
+        IpcMessage::ReadingState {
+            feed_id,
+            article_id,
+            webkit,
+        } => {
+            // Fire-and-forget from the viewer; remember it for the next open.
+            *ctx.reading_state.lock().expect("reading_state poisoned") =
+                crate::state::ReadingState {
+                    feed_id,
+                    article_id,
+                    webkit,
+                };
+        }
         IpcMessage::OpenViewer => {
             let _ = ctx.open_tx.send(OpenRequest::Show);
             let _ = out_tx.send(IpcMessage::Ack);

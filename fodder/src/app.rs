@@ -27,6 +27,8 @@ use crate::runtime::{self, DbHandle};
 pub struct Target {
     pub feed: Option<i64>,
     pub article: Option<i64>,
+    /// Restore straight into the full WebKit view.
+    pub webkit: bool,
 }
 
 /// All viewer state and widgets. Held in an `Rc`; signal handlers and the async
@@ -64,6 +66,8 @@ pub struct App {
     current_url: RefCell<Option<String>>,
     current_content: RefCell<Option<String>>,
     suppress: Cell<bool>,
+    /// Set from a restore target: activate the web view on the first article.
+    pending_webkit: Cell<bool>,
 
     // Right-click context menus and the row they target.
     feed_popover: gtk::PopoverMenu,
@@ -110,6 +114,7 @@ pub fn build(app: &adw::Application, target: Target) {
         }
     });
 
+    this.pending_webkit.set(target.webkit);
     this.window.present();
     this.load_feeds(Some(target));
 }
@@ -322,6 +327,7 @@ fn assemble(
         current_url: RefCell::new(None),
         current_content: RefCell::new(None),
         suppress: Cell::new(false),
+        pending_webkit: Cell::new(false),
         feed_popover,
         article_popover,
         ctx_feed: Cell::new(None),
@@ -561,6 +567,7 @@ fn wire_signals(
         } else {
             a.disable_webkit();
         }
+        a.report_reading_state();
     });
 }
 
@@ -621,7 +628,11 @@ impl App {
             .position(|f| *f == want_feed)
             .unwrap_or(0);
         let feed_id = self.feed_ids.borrow().get(idx).copied().flatten();
+        // Select the row without re-triggering the row-selected handler (which
+        // would navigate with no article and clear the restore state).
+        self.suppress.set(true);
         self.select_feed_row(idx);
+        self.suppress.set(false);
         self.select_feed(feed_id, target.and_then(|t| t.article));
     }
 
@@ -688,7 +699,10 @@ impl App {
         // Restore/select an article if requested and present.
         if let Some(want) = then_article {
             if let Some(pos) = self.article_ids.borrow().iter().position(|id| *id == want) {
+                // Suppress so the programmatic selection doesn't re-open it.
+                self.suppress.set(true);
                 self.select_article_row(pos);
+                self.suppress.set(false);
                 self.open_article(want);
                 return;
             }
@@ -735,9 +749,25 @@ impl App {
         }
         self.inner_split.set_show_content(true);
 
+        // Restoring a session that was in web mode: flip into it now that the
+        // article's content is loaded (this fires the toggle handler).
+        if self.pending_webkit.replace(false) {
+            self.webkit_toggle.set_active(true);
+        }
+
         if !article.is_read {
             self.mark_read(article.id);
         }
+        self.report_reading_state();
+    }
+
+    /// Tell the daemon what we're showing, so it can restore it on the next open.
+    fn report_reading_state(&self) {
+        let _ = self.cmd_tx.send(IpcMessage::ReadingState {
+            feed_id: self.selected_feed.get(),
+            article_id: self.current_article.get(),
+            webkit: self.webkit_toggle.is_active(),
+        });
     }
 
     /// Switch the reader to the full WebKit view: load the live article page
@@ -885,6 +915,7 @@ impl App {
                 Ok(()) => this.load_feeds(Some(Target {
                     feed: this.selected_feed.get(),
                     article: this.current_article.get(),
+                    webkit: false,
                 })),
                 Err(e) => tracing::warn!("mark_all_read failed: {e}"),
             },
@@ -1295,11 +1326,13 @@ impl App {
                 self.load_feeds(Some(Target {
                     feed: Some(feed_id),
                     article: article_id,
+                    webkit: false,
                 }));
             }
             FromDaemon::FeedsChanged => self.load_feeds(Some(Target {
                 feed: self.selected_feed.get(),
                 article: self.current_article.get(),
+                webkit: false,
             })),
             FromDaemon::Duplicate => {
                 tracing::info!("another viewer is already open; exiting");
@@ -1319,6 +1352,7 @@ impl App {
         self.current_article.set(None);
         *self.current_url.borrow_mut() = None;
         *self.current_content.borrow_mut() = None;
+        self.pending_webkit.set(false); // a restore target that no longer exists
         self.destroy_webview();
         self.reader_stack.set_visible_child_name("empty");
     }

@@ -29,6 +29,15 @@ pub enum OpenRequest {
 /// `spawn_blocking` closures.
 pub type DbHandle = Arc<Mutex<Db>>;
 
+/// What the viewer last reported it was showing, so we can restore it on the
+/// next open. Kept in memory only (resets when the daemon restarts).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReadingState {
+    pub feed_id: Option<i64>,
+    pub article_id: Option<i64>,
+    pub webkit: bool,
+}
+
 /// Cloneable handle to everything the daemon's tasks share.
 #[derive(Clone)]
 pub struct AppCtx {
@@ -52,6 +61,8 @@ pub struct AppCtx {
     pub open_tx: UnboundedSender<OpenRequest>,
     /// Requests to poll now: `Some(feed_id)` for one feed, `None` for all due.
     pub refresh_tx: UnboundedSender<Option<i64>>,
+    /// The viewer's last-reported reading state, restored on the next open.
+    pub reading_state: Arc<Mutex<ReadingState>>,
 }
 
 impl AppCtx {

@@ -31,6 +31,13 @@ pub enum IpcMessage {
     SubscribeResolved { feed_url: String, title: String },
     /// The config file changed; the daemon should reload it.
     ReloadConfig,
+    /// The viewer reports what it's currently showing, so the daemon can restore
+    /// it on the next open. `article_id`/`feed_id` are `None` when nothing is open.
+    ReadingState {
+        feed_id: Option<i64>,
+        article_id: Option<i64>,
+        webkit: bool,
+    },
 
     // --- daemon -> viewer ---
     /// Raise/show the viewer window.
@@ -118,6 +125,11 @@ mod tests {
                 title: "E".into(),
             },
             IpcMessage::ReloadConfig,
+            IpcMessage::ReadingState {
+                feed_id: Some(2),
+                article_id: Some(9),
+                webkit: true,
+            },
             IpcMessage::OpenViewer,
             IpcMessage::OpenAt {
                 feed_id: 3,

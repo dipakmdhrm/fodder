@@ -77,6 +77,7 @@ async fn main() -> Result<()> {
         viewer_kill: Arc::new(Mutex::new(None)),
         open_tx: open_tx.clone(),
         refresh_tx: refresh_tx.clone(),
+        reading_state: Arc::new(Mutex::new(state::ReadingState::default())),
     };
 
     // Best-effort system tray; graceful degrade if no SNI host is present.

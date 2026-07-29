@@ -49,6 +49,7 @@ fn parse_args() -> Target {
         match arg.as_str() {
             "--feed" => target.feed = args.next().and_then(|v| v.parse().ok()),
             "--article" => target.article = args.next().and_then(|v| v.parse().ok()),
+            "--webkit" => target.webkit = true,
             _ => {}
         }
     }

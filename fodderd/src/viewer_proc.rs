@@ -65,14 +65,29 @@ fn message_for(req: &OpenRequest) -> IpcMessage {
 fn spawn(ctx: &AppCtx, req: OpenRequest) {
     let exe = viewer_path();
     let mut cmd = Command::new(&exe);
-    if let OpenRequest::At {
-        feed_id,
-        article_id,
-    } = &req
-    {
-        cmd.arg("--feed").arg(feed_id.to_string());
-        if let Some(a) = article_id {
-            cmd.arg("--article").arg(a.to_string());
+    match &req {
+        OpenRequest::At {
+            feed_id,
+            article_id,
+        } => {
+            cmd.arg("--feed").arg(feed_id.to_string());
+            if let Some(a) = article_id {
+                cmd.arg("--article").arg(a.to_string());
+            }
+        }
+        OpenRequest::Show => {
+            // A plain open (app menu / tray) restores the last-read article and
+            // mode the viewer reported before it was closed.
+            let state = *ctx.reading_state.lock().expect("reading_state poisoned");
+            if let Some(article) = state.article_id {
+                if let Some(feed) = state.feed_id {
+                    cmd.arg("--feed").arg(feed.to_string());
+                }
+                cmd.arg("--article").arg(article.to_string());
+                if state.webkit {
+                    cmd.arg("--webkit");
+                }
+            }
         }
     }
     // Reap ourselves rather than leaving a zombie.
