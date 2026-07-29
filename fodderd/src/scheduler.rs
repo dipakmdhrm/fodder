@@ -111,8 +111,7 @@ async fn poll_one(ctx: &AppCtx, feed_id: i64) -> anyhow::Result<()> {
 
 /// Poll the given feeds concurrently and store each outcome.
 async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<()> {
-    let by_id: HashMap<i64, Feed> =
-        feeds_to_poll.iter().map(|f| (f.id, f.clone())).collect();
+    let by_id: HashMap<i64, Feed> = feeds_to_poll.iter().map(|f| (f.id, f.clone())).collect();
 
     let outcomes = ctx.poller.poll_all(feeds_to_poll).await;
     let interval = ctx.config().poll_interval();
@@ -219,7 +218,7 @@ async fn store_updated(
                     });
                 }
             }
-            out.sort_by(|a, b| b.id.cmp(&a.id)); // newest (highest id) first
+            out.sort_by_key(|it| std::cmp::Reverse(it.id)); // newest (highest id) first
             Ok(out)
         })
         .await?;

@@ -38,8 +38,10 @@ mod tests {
     use feed_rs::model::{Entry, Link, Text};
 
     fn entry_with(id: &str, link: Option<&str>, title: Option<&str>) -> Entry {
-        let mut e = Entry::default();
-        e.id = id.to_string();
+        let mut e = Entry {
+            id: id.to_string(),
+            ..Entry::default()
+        };
         if let Some(l) = link {
             e.links = vec![Link {
                 href: l.to_string(),

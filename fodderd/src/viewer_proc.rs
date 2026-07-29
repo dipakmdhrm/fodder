@@ -33,7 +33,11 @@ pub fn open(ctx: &AppCtx, req: OpenRequest) {
 /// Deliver any deferred open request once the viewer has connected. Called from
 /// the IPC server on `ViewerHello`.
 pub fn deliver_pending(ctx: &AppCtx) {
-    let pending = ctx.pending_open.lock().expect("pending_open poisoned").take();
+    let pending = ctx
+        .pending_open
+        .lock()
+        .expect("pending_open poisoned")
+        .take();
     if let Some(req) = pending {
         ctx.send_to_viewer(message_for(&req));
     }

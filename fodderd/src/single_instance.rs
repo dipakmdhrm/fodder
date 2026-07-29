@@ -47,7 +47,10 @@ async fn probe_alive(path: &Path) -> bool {
     let Ok(mut stream) = UnixStream::connect(path).await else {
         return false;
     };
-    if ipc::write_msg(&mut stream, &IpcMessage::Ping).await.is_err() {
+    if ipc::write_msg(&mut stream, &IpcMessage::Ping)
+        .await
+        .is_err()
+    {
         return false;
     }
     matches!(

@@ -89,9 +89,7 @@ pub fn parse_sql_time(s: &str) -> DateTime<Utc> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
         return dt.with_timezone(&Utc);
     }
-    if let Ok(naive) =
-        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-    {
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
         return Utc.from_utc_datetime(&naive);
     }
     Utc.timestamp_opt(0, 0).single().unwrap_or_default()

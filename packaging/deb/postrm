@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # Remove the apt repository configuration we added in postinst.
+    rm -f /etc/apt/keyrings/fodder.gpg
+    rm -f /etc/apt/sources.list.d/fodder.list
+
+    # Remove autostart entries the app may have created for any user.
+    for home_dir in /home/*; do
+        rm -f "$home_dir/.config/autostart/fodder.desktop" 2>/dev/null || true
+    done
+
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+fi
+
+exit 0

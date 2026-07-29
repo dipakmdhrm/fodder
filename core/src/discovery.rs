@@ -24,7 +24,12 @@ pub enum FeedKind {
 impl FeedKind {
     fn from_mime(mime: &str) -> Option<Self> {
         // Compare on the essence, ignoring parameters/whitespace/case.
-        let m = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+        let m = mime
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
         match m.as_str() {
             "application/rss+xml" => Some(FeedKind::Rss),
             "application/atom+xml" => Some(FeedKind::Atom),
@@ -179,8 +184,7 @@ mod tests {
 
     #[test]
     fn mime_with_charset_parameter_still_matches() {
-        let html =
-            r#"<link rel="alternate" type="application/rss+xml; charset=utf-8" href="/f">"#;
+        let html = r#"<link rel="alternate" type="application/rss+xml; charset=utf-8" href="/f">"#;
         let feeds = extract_feed_links(html, &base());
         assert_eq!(feeds.len(), 1);
         assert_eq!(feeds[0].kind, FeedKind::Rss);

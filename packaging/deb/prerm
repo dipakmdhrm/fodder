@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+# Stop any running daemon/viewer before removal or upgrade so the new binaries
+# take over cleanly.
+pkill -x fodderd 2>/dev/null || true
+pkill -x fodder 2>/dev/null || true
+
+exit 0

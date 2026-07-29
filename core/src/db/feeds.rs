@@ -45,9 +45,7 @@ pub fn list_feeds(conn: &Connection) -> Result<Vec<Feed>, DbError> {
 /// One feed by id, or `None`.
 pub fn get_feed(conn: &Connection, id: i64) -> Result<Option<Feed>, DbError> {
     let sql = format!("{SELECT} WHERE id = ?1");
-    Ok(conn
-        .query_row(&sql, params![id], row_to_feed)
-        .optional()?)
+    Ok(conn.query_row(&sql, params![id], row_to_feed).optional()?)
 }
 
 /// Feeds whose `next_poll_at` is at or before `now` — the poll scheduler's work
@@ -80,11 +78,7 @@ pub fn update_feed_success(
 /// Modified or a rate-limit backoff. Clears the error state and sets the next
 /// poll time but deliberately preserves `etag` / `last_modified`, so the stored
 /// validators keep working on the next conditional GET.
-pub fn reschedule(
-    conn: &Connection,
-    id: i64,
-    next_poll_at: DateTime<Utc>,
-) -> Result<(), DbError> {
+pub fn reschedule(conn: &Connection, id: i64, next_poll_at: DateTime<Utc>) -> Result<(), DbError> {
     conn.execute(
         "UPDATE feeds SET last_error = NULL, error_count = 0, next_poll_at = ?2 WHERE id = ?1",
         params![id, to_sql_time(next_poll_at)],
@@ -159,7 +153,14 @@ mod tests {
         let id = insert_feed(db.conn(), "https://e.com/f", "E").unwrap();
         let next = Utc::now() + chrono::Duration::minutes(30);
         update_feed_error(db.conn(), id, "boom", 2, Utc::now()).unwrap();
-        update_feed_success(db.conn(), id, Some("etag-1"), Some("Mon, 01 Jan 2024"), next).unwrap();
+        update_feed_success(
+            db.conn(),
+            id,
+            Some("etag-1"),
+            Some("Mon, 01 Jan 2024"),
+            next,
+        )
+        .unwrap();
         let f = get_feed(db.conn(), id).unwrap().unwrap();
         assert_eq!(f.etag.as_deref(), Some("etag-1"));
         assert_eq!(f.last_error, None);

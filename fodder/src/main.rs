@@ -8,10 +8,10 @@ mod ipc_client;
 mod reader;
 mod runtime;
 
-use gtk4 as gtk;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use libadwaita as adw;
 
 use app::Target;
@@ -20,8 +20,7 @@ use fodder_core::APP_ID;
 fn main() -> glib::ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 

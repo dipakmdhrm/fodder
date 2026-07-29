@@ -1,0 +1,37 @@
+# Maintainer: dipakmdhrm <dipakmdhrm@gmail.com>
+pkgname=fodder
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Lightweight RSS/Atom/JSON feed reader"
+arch=('x86_64')
+url="https://github.com/dipakmdhrm/fodder"
+license=('MIT')
+depends=('gtk4' 'libadwaita' 'webkitgtk-6.0')
+makedepends=('cargo')
+install=fodder.install
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    export CARGO_TARGET_DIR=target
+    cargo build --release --workspace --locked
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    install -Dm755 target/release/fodderd "${pkgdir}/usr/bin/fodderd"
+    install -Dm755 target/release/fodder  "${pkgdir}/usr/bin/fodder"
+    install -Dm644 data/applications/io.github.dipakmdhrm.Fodder.desktop \
+        "${pkgdir}/usr/share/applications/io.github.dipakmdhrm.Fodder.desktop"
+
+    for size in 16 24 32 48 64 128 256 512; do
+        install -Dm644 "data/icons/hicolor/${size}x${size}/apps/io.github.dipakmdhrm.Fodder.png" \
+            "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/io.github.dipakmdhrm.Fodder.png"
+    done
+    install -Dm644 data/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg"
+
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

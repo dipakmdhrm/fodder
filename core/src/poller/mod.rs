@@ -73,9 +73,7 @@ impl Poller {
         .await
         {
             FetchResponse::NotModified => PollOutcome::NotModified,
-            FetchResponse::RateLimited { retry_after } => {
-                PollOutcome::RateLimited { retry_after }
-            }
+            FetchResponse::RateLimited { retry_after } => PollOutcome::RateLimited { retry_after },
             FetchResponse::Error(e) => PollOutcome::Error(e),
             FetchResponse::Modified {
                 etag,

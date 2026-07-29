@@ -26,9 +26,14 @@ pub enum IpcMessage {
 
     // --- viewer -> daemon ---
     /// Poll now — one feed, or all when `feed_id` is `None`.
-    RefreshNow { feed_id: Option<i64> },
+    RefreshNow {
+        feed_id: Option<i64>,
+    },
     /// A resolved subscription the daemon should persist and start polling.
-    SubscribeResolved { feed_url: String, title: String },
+    SubscribeResolved {
+        feed_url: String,
+        title: String,
+    },
     /// The config file changed; the daemon should reload it.
     ReloadConfig,
     /// The viewer reports what it's currently showing, so the daemon can restore
@@ -56,10 +61,7 @@ pub enum IpcMessage {
 }
 
 /// Write one framed message.
-pub async fn write_msg<W: AsyncWrite + Unpin>(
-    w: &mut W,
-    msg: &IpcMessage,
-) -> std::io::Result<()> {
+pub async fn write_msg<W: AsyncWrite + Unpin>(w: &mut W, msg: &IpcMessage) -> std::io::Result<()> {
     let body = serde_json::to_vec(msg)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     if body.len() as u64 > MAX_FRAME_LEN as u64 {
@@ -76,9 +78,7 @@ pub async fn write_msg<W: AsyncWrite + Unpin>(
 
 /// Read one framed message. Returns `Ok(None)` on a clean EOF at a frame
 /// boundary (peer closed the connection).
-pub async fn read_msg<R: AsyncRead + Unpin>(
-    r: &mut R,
-) -> std::io::Result<Option<IpcMessage>> {
+pub async fn read_msg<R: AsyncRead + Unpin>(r: &mut R) -> std::io::Result<Option<IpcMessage>> {
     let mut len_buf = [0u8; 4];
     match r.read_exact(&mut len_buf).await {
         Ok(_) => {}

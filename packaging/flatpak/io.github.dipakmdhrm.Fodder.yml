@@ -1,0 +1,50 @@
+app-id: io.github.dipakmdhrm.Fodder
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: fodder-launcher
+
+finish-args:
+  # Display + GPU (WebKit rendering).
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Fetching feeds and (in web view) live pages.
+  - --share=network
+  # Desktop notifications and the StatusNotifierItem tray.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Open-in-browser hands the URL to the portal.
+  - --talk-name=org.freedesktop.portal.*
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  # Self-hosted repo build: let cargo fetch crates from the network. (A Flathub
+  # submission would instead vendor them via a generated cargo-sources.json.)
+  build-args:
+    - --share=network
+  env:
+    CARGO_HOME: /run/build/fodder/cargo
+
+modules:
+  - name: fodder
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --workspace --locked
+      - install -Dm755 target/release/fodderd /app/bin/fodderd
+      - install -Dm755 target/release/fodder /app/bin/fodder
+      - install -Dm755 packaging/flatpak/fodder-launcher.sh /app/bin/fodder-launcher
+      - install -Dm644 data/applications/io.github.dipakmdhrm.Fodder.desktop
+        /app/share/applications/io.github.dipakmdhrm.Fodder.desktop
+      - |
+        for s in 16 24 32 48 64 128 256 512; do
+          install -Dm644 "data/icons/hicolor/${s}x${s}/apps/io.github.dipakmdhrm.Fodder.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/io.github.dipakmdhrm.Fodder.png"
+        done
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg
+    sources:
+      - type: dir
+        path: ../..

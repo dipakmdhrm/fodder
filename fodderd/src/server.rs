@@ -80,8 +80,7 @@ async fn handle_msg(
             let _ = out_tx.send(IpcMessage::Pong);
         }
         IpcMessage::ViewerHello => {
-            let already_connected =
-                ctx.viewer.lock().expect("viewer mutex poisoned").is_some();
+            let already_connected = ctx.viewer.lock().expect("viewer mutex poisoned").is_some();
             if already_connected {
                 // Enforce exactly one viewer: raise the existing one and tell
                 // this duplicate to exit.

@@ -55,7 +55,9 @@ async fn sends_conditional_headers_and_handles_304() {
         Some("\"etag-1\"")
     );
     assert_eq!(
-        headers.get("if-modified-since").map(|v| v.to_str().unwrap()),
+        headers
+            .get("if-modified-since")
+            .map(|v| v.to_str().unwrap()),
         Some("Mon, 01 Jan 2024 00:00:00 GMT")
     );
 }
@@ -84,7 +86,10 @@ async fn captures_new_validators_on_200() {
             body,
         } => {
             assert_eq!(etag.as_deref(), Some("\"new-etag\""));
-            assert_eq!(last_modified.as_deref(), Some("Wed, 10 Jan 2024 12:00:00 GMT"));
+            assert_eq!(
+                last_modified.as_deref(),
+                Some("Wed, 10 Jan 2024 12:00:00 GMT")
+            );
             assert!(!body.is_empty());
         }
         other => panic!("expected Modified, got {other:?}"),

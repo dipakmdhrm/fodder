@@ -42,23 +42,53 @@ cargo build --workspace     # build all three crates
 cargo test --workspace      # run the test suite
 ```
 
-## Install (per-user)
+## Install
+
+Fodder needs a recent distro (GTK 4.14+, libadwaita 1.5+, WebKitGTK 6.0):
+Ubuntu 24.04+, Fedora 40+, Debian 13, Arch, or any distro via Flatpak.
+
+### Debian / Ubuntu (`.deb`, with automatic updates)
+
+Add the signed apt repository once, then install — `apt upgrade` tracks
+future releases:
+
+```bash
+curl -fsSL https://dipakmdhrm.github.io/fodder/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/fodder.gpg
+echo "deb [signed-by=/etc/apt/keyrings/fodder.gpg] https://dipakmdhrm.github.io/fodder stable main" | sudo tee /etc/apt/sources.list.d/fodder.list
+sudo apt update && sudo apt install fodder
+```
+(Or download the `.deb` from a [release](https://github.com/dipakmdhrm/fodder/releases)
+and `sudo apt install ./fodder_*.deb` — the postinstall adds the repo for you.)
+
+### Fedora (`.rpm`) / Arch (`.pkg.tar.zst`)
+
+Download the matching package from a
+[release](https://github.com/dipakmdhrm/fodder/releases):
+
+```bash
+sudo dnf install ./fodder-*.rpm            # Fedora
+sudo pacman -U ./fodder-*.pkg.tar.zst      # Arch
+```
+
+### Flatpak (any distro, with automatic updates)
+
+```bash
+flatpak remote-add --if-not-exists fodder https://dipakmdhrm.github.io/fodder/fodder.flatpakrepo
+flatpak install fodder io.github.dipakmdhrm.Fodder
+```
+`flatpak update` then keeps it current.
+
+### From source (per-user, no packaging)
 
 ```bash
 ./install.sh                # release build → ~/.local/bin, icon + .desktop → ~/.local/share
-```
-
-This installs the `fodderd`/`fodder` binaries, the app icons, and a desktop
-entry so **Fodder Reader** appears in your app menu. Ensure `~/.local/bin` is on
-your `PATH`.
-
-```bash
 ./uninstall.sh              # remove app files; keep your feeds/config
 ./uninstall.sh --purge      # also delete feeds, database, and config
 ```
+Ensure `~/.local/bin` is on your `PATH`.
 
-For verifying the desktop integration across environments, see
-[docs/cross-desktop-testing.md](docs/cross-desktop-testing.md).
+Release/packaging details live in [docs/RELEASING.md](docs/RELEASING.md); for
+cross-desktop verification see [docs/cross-desktop-testing.md](docs/cross-desktop-testing.md).
 
 ## Running (current state)
 

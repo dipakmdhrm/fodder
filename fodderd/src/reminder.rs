@@ -77,18 +77,12 @@ fn duration_until_next(hour: u32, minute: u32) -> Duration {
         let tomorrow = now.date_naive() + chrono::Duration::days(1);
         local_at(tomorrow, hour, minute).unwrap_or(now + chrono::Duration::minutes(1))
     });
-    (target - now)
-        .to_std()
-        .unwrap_or(Duration::from_secs(60))
+    (target - now).to_std().unwrap_or(Duration::from_secs(60))
 }
 
 /// A `Local` datetime for `date` at `hour:minute`, resolving DST ambiguity by
 /// taking the earliest valid instant.
-fn local_at(
-    date: chrono::NaiveDate,
-    hour: u32,
-    minute: u32,
-) -> Option<chrono::DateTime<Local>> {
+fn local_at(date: chrono::NaiveDate, hour: u32, minute: u32) -> Option<chrono::DateTime<Local>> {
     let naive = date.and_hms_opt(hour, minute, 0)?;
     Local.from_local_datetime(&naive).earliest()
 }

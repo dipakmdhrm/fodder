@@ -5,16 +5,15 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
+use adw::prelude::*;
 use fodder_core::db::{articles, feeds, Db};
 use fodder_core::discovery::{self, DiscoveredFeed, DiscoveryResult};
 use fodder_core::ipc::IpcMessage;
 use fodder_core::models::Article;
 use fodder_core::{paths, Config};
-use gtk4 as gtk;
-use gtk::prelude::*;
 use gtk::{gdk, gio, glib, pango};
+use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use webkit6::prelude::*;
 
@@ -193,7 +192,14 @@ fn assemble(
         .build();
     let articles_stack = gtk::Stack::new();
     articles_stack.add_named(&articles_scroll, Some("list"));
-    articles_stack.add_named(&status_page("view-list-symbolic", "No articles", "This feed has no articles yet."), Some("empty"));
+    articles_stack.add_named(
+        &status_page(
+            "view-list-symbolic",
+            "No articles",
+            "This feed has no articles yet.",
+        ),
+        Some("empty"),
+    );
     articles_stack.add_named(&centered_spinner(), Some("loading"));
     articles_stack.set_visible_child_name("empty");
 
@@ -245,7 +251,14 @@ fn assemble(
     reader_stack.add_named(&reader_scroll, Some("content"));
     reader_stack.add_named(&webkit_holder, Some("webkit"));
     reader_stack.add_named(&centered_spinner(), Some("webloading"));
-    reader_stack.add_named(&status_page("emblem-documents-symbolic", "Select an article", "Choose an article from the list to read it here."), Some("empty"));
+    reader_stack.add_named(
+        &status_page(
+            "emblem-documents-symbolic",
+            "Select an article",
+            "Choose an article from the list to read it here.",
+        ),
+        Some("empty"),
+    );
     reader_stack.add_named(&reader_error, Some("error"));
     reader_stack.set_visible_child_name("empty");
 
@@ -342,7 +355,13 @@ fn assemble(
     });
 
     wire_signals(
-        &this, &add_btn, &remove_btn, &refresh_btn, &mark_all_btn, &open_btn, &prefs_btn,
+        &this,
+        &add_btn,
+        &remove_btn,
+        &refresh_btn,
+        &mark_all_btn,
+        &open_btn,
+        &prefs_btn,
         &webkit_toggle,
     );
 
@@ -403,7 +422,8 @@ fn setup_context_menus(this: &Rc<App>) {
         let url = app.feed_urls.borrow().get(idx).cloned().flatten();
         app.ctx_feed.set(feed_id);
         *app.ctx_feed_url.borrow_mut() = url;
-        app.feed_popover.set_menu_model(Some(&build_feed_menu(feed_id.is_some())));
+        app.feed_popover
+            .set_menu_model(Some(&build_feed_menu(feed_id.is_some())));
         point_popover_at(&app.feed_popover, &app.feeds_list, x, y);
         app.feed_popover.popup();
     });
@@ -411,7 +431,9 @@ fn setup_context_menus(this: &Rc<App>) {
 
     // --- Article list ---
     let group = gio::SimpleActionGroup::new();
-    add_action(&group, "toggleread", this, |app| app.toggle_ctx_article_read());
+    add_action(&group, "toggleread", this, |app| {
+        app.toggle_ctx_article_read()
+    });
     add_action(&group, "openbrowser", this, |app| {
         if let Some(url) = app.ctx_article_url.borrow().clone() {
             open_uri(&app.window, &url);
@@ -487,7 +509,11 @@ fn build_feed_menu(is_real_feed: bool) -> gio::Menu {
 
 fn build_article_menu(is_read: bool) -> gio::Menu {
     let menu = gio::Menu::new();
-    let toggle_label = if is_read { "Mark as unread" } else { "Mark as read" };
+    let toggle_label = if is_read {
+        "Mark as unread"
+    } else {
+        "Mark as read"
+    };
     menu.append(Some(toggle_label), Some("artctx.toggleread"));
     menu.append(Some("Open in browser"), Some("artctx.openbrowser"));
     menu.append(Some("Copy link"), Some("artctx.copylink"));
@@ -504,6 +530,7 @@ fn open_uri(window: &adw::ApplicationWindow, uri: &str) {
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn wire_signals(
     this: &Rc<App>,
     add_btn: &gtk::Button,
@@ -604,14 +631,16 @@ impl App {
         let mut urls: Vec<Option<String>> = Vec::with_capacity(feeds.len() + 1);
 
         // "All Articles" aggregate row.
-        self.feeds_list.append(&feed_row("All Articles", total, false));
+        self.feeds_list
+            .append(&feed_row("All Articles", total, false));
         ids.push(None);
         urls.push(None);
 
         for feed in &feeds {
             let count = unread.get(&feed.id).copied().unwrap_or(0);
             let has_error = feed.last_error.is_some();
-            self.feeds_list.append(&feed_row(&feed.title, count, has_error));
+            self.feeds_list
+                .append(&feed_row(&feed.title, count, has_error));
             ids.push(Some(feed.id));
             urls.push(Some(feed.url.clone()));
         }
@@ -620,7 +649,9 @@ impl App {
         self.suppress.set(false);
 
         // Decide which feed to show.
-        let want_feed = target.and_then(|t| t.feed).or_else(|| self.selected_feed.get());
+        let want_feed = target
+            .and_then(|t| t.feed)
+            .or_else(|| self.selected_feed.get());
         let idx = self
             .feed_ids
             .borrow()
@@ -891,7 +922,10 @@ impl App {
                 if is_read {
                     label.set_text(&label.text());
                 } else {
-                    label.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&label.text())));
+                    label.set_markup(&format!(
+                        "<b>{}</b>",
+                        glib::markup_escape_text(&label.text())
+                    ));
                 }
             }
             if let Some(read) = self.article_read.borrow_mut().get_mut(pos) {
@@ -954,7 +988,8 @@ impl App {
         clear_list(&self.feeds_list);
         let mut ids: Vec<Option<i64>> = Vec::with_capacity(feeds.len() + 1);
         let mut urls: Vec<Option<String>> = Vec::with_capacity(feeds.len() + 1);
-        self.feeds_list.append(&feed_row("All Articles", total, false));
+        self.feeds_list
+            .append(&feed_row("All Articles", total, false));
         ids.push(None);
         urls.push(None);
         for feed in &feeds {
@@ -979,15 +1014,11 @@ impl App {
     fn open_in_browser(self: &Rc<Self>) {
         if let Some(url) = self.current_url.borrow().clone() {
             let launcher = gtk::UriLauncher::new(&url);
-            launcher.launch(
-                Some(&self.window),
-                gio::Cancellable::NONE,
-                |res| {
-                    if let Err(e) = res {
-                        tracing::warn!("open in browser failed: {e}");
-                    }
-                },
-            );
+            launcher.launch(Some(&self.window), gio::Cancellable::NONE, |res| {
+                if let Err(e) = res {
+                    tracing::warn!("open in browser failed: {e}");
+                }
+            });
         }
     }
 
@@ -1034,7 +1065,9 @@ impl App {
             },
             move |res| match res {
                 // Direct feed: resolve_feed already parsed the feed's title.
-                Ok(DiscoveryResult::DirectFeed { url, title }) => this.confirm_subscribe(url, title),
+                Ok(DiscoveryResult::DirectFeed { url, title }) => {
+                    this.confirm_subscribe(url, title)
+                }
                 Ok(DiscoveryResult::Candidates(mut candidates)) => {
                     if candidates.len() == 1 {
                         // Exactly one feed — no picker, just confirm it.
@@ -1321,7 +1354,10 @@ impl App {
     fn handle_daemon(self: &Rc<Self>, event: FromDaemon) {
         match event {
             FromDaemon::Open => self.window.present(),
-            FromDaemon::OpenAt { feed_id, article_id } => {
+            FromDaemon::OpenAt {
+                feed_id,
+                article_id,
+            } => {
                 self.window.present();
                 self.load_feeds(Some(Target {
                     feed: Some(feed_id),
@@ -1528,7 +1564,10 @@ fn article_row(article: &Article) -> (gtk::Widget, gtk::Label) {
     if article.is_read {
         title.set_text(&article.title);
     } else {
-        title.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&article.title)));
+        title.set_markup(&format!(
+            "<b>{}</b>",
+            glib::markup_escape_text(&article.title)
+        ));
     }
     container.append(&title);
 

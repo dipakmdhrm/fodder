@@ -13,3 +13,16 @@
 /.idea
 /.vscode
 .DS_Store
+
+# Release/packaging build output (produced locally when testing packaging)
+/rpmbuild
+/arch-build
+/gh-pages-dir
+/build-dir
+/.flatpak-builder
+/repo
+/pages
+*.deb
+*.rpm
+*.pkg.tar.zst
+*.flatpak

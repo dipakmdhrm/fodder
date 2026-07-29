@@ -95,9 +95,8 @@ pub fn mark_all_read(conn: &Connection, feed_id: Option<i64>) -> Result<(), DbEr
 
 /// Unread count per feed id. Feeds with no unread articles are omitted.
 pub fn unread_counts(conn: &Connection) -> Result<HashMap<i64, i64>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT feed_id, COUNT(*) FROM articles WHERE is_read = 0 GROUP BY feed_id",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT feed_id, COUNT(*) FROM articles WHERE is_read = 0 GROUP BY feed_id")?;
     let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?;
     let mut map = HashMap::new();
     for r in rows {
@@ -109,9 +108,11 @@ pub fn unread_counts(conn: &Connection) -> Result<HashMap<i64, i64>, DbError> {
 
 /// Total unread across all feeds — for the tray / window title.
 pub fn total_unread(conn: &Connection) -> Result<i64, DbError> {
-    Ok(conn.query_row("SELECT COUNT(*) FROM articles WHERE is_read = 0", [], |r| {
-        r.get(0)
-    })?)
+    Ok(
+        conn.query_row("SELECT COUNT(*) FROM articles WHERE is_read = 0", [], |r| {
+            r.get(0)
+        })?,
+    )
 }
 
 /// Articles for one feed, or the "All articles" aggregate when `feed_id` is
@@ -191,7 +192,11 @@ mod tests {
         insert_new_articles(db.conn_mut(), feed_id, &[new_article("a", "A")]).unwrap();
         assert_eq!(total_unread(db.conn()).unwrap(), 1);
         feeds::delete_feed(db.conn(), feed_id).unwrap();
-        assert_eq!(total_unread(db.conn()).unwrap(), 0, "articles cascade-deleted");
+        assert_eq!(
+            total_unread(db.conn()).unwrap(),
+            0,
+            "articles cascade-deleted"
+        );
     }
 
     #[test]
@@ -209,7 +214,7 @@ mod tests {
         assert_eq!(*unread_counts(db.conn()).unwrap().get(&feed_id).unwrap(), 1);
 
         mark_all_read(db.conn(), Some(feed_id)).unwrap();
-        assert!(unread_counts(db.conn()).unwrap().get(&feed_id).is_none());
+        assert!(!unread_counts(db.conn()).unwrap().contains_key(&feed_id));
         assert_eq!(total_unread(db.conn()).unwrap(), 0);
     }
 
@@ -232,7 +237,10 @@ mod tests {
             &[new_article("a", "A"), new_article("b", "B")],
         )
         .unwrap();
-        assert_eq!(articles_for(db.conn(), Some(feed_id), 100).unwrap().len(), 2);
+        assert_eq!(
+            articles_for(db.conn(), Some(feed_id), 100).unwrap().len(),
+            2
+        );
         assert_eq!(articles_for(db.conn(), None, 100).unwrap().len(), 2);
     }
 }

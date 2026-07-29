@@ -59,14 +59,12 @@ pub async fn conditional_get(
         return FetchResponse::NotModified;
     }
 
-    if status == StatusCode::TOO_MANY_REQUESTS
-        || status == StatusCode::SERVICE_UNAVAILABLE
-    {
+    if status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::SERVICE_UNAVAILABLE {
         let retry_after = resp
             .headers()
             .get(RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
-            .and_then(|s| parse_retry_after(s))
+            .and_then(parse_retry_after)
             // Default backoff when the server rate-limits without a hint.
             .unwrap_or_else(|| Duration::from_secs(300));
         return FetchResponse::RateLimited { retry_after };
@@ -106,9 +104,7 @@ pub fn parse_retry_after(value: &str) -> Option<Duration> {
     }
 
     // Form 2: HTTP-date, e.g. "Wed, 21 Oct 2025 07:28:00 GMT".
-    if let Ok(naive) =
-        chrono::NaiveDateTime::parse_from_str(value, "%a, %d %b %Y %H:%M:%S GMT")
-    {
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(value, "%a, %d %b %Y %H:%M:%S GMT") {
         let target = naive.and_utc();
         let delta = target.signed_duration_since(Utc::now());
         return Some(delta.to_std().unwrap_or(Duration::ZERO));

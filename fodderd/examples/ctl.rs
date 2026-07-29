@@ -104,7 +104,10 @@ fn autostart(action: Option<&str>) -> anyhow::Result<()> {
     match action {
         Some("on") => {
             autostart::enable()?;
-            println!("autostart enabled -> {}", autostart::desktop_path()?.display());
+            println!(
+                "autostart enabled -> {}",
+                autostart::desktop_path()?.display()
+            );
         }
         Some("off") => {
             autostart::disable()?;

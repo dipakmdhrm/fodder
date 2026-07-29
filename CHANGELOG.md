@@ -6,6 +6,15 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Build & release
+- GitHub Actions **CI** (`cargo fmt --check`, `clippy -D warnings`, tests) and a
+  tag-triggered **Release** pipeline that builds `.deb`, `.rpm`, an Arch package,
+  and Flatpak bundles (x86_64 + arm64; Arch x86_64-only) and attaches them to a
+  GitHub Release.
+- Self-hosted, GPG-signed **apt** and **flatpak** repos published to `gh-pages`
+  so `.deb` and Flatpak installs auto-update. Packaging lives in `packaging/`;
+  release process in `docs/RELEASING.md`. Added a top-level `LICENSE` (MIT).
+
 ### Session restore
 - The viewer reports what it's showing (article + light/web mode) to the daemon
   over IPC; on the next plain open (app menu / tray) the daemon reopens that

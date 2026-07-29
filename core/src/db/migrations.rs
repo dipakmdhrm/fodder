@@ -45,8 +45,7 @@ pub const MIGRATIONS: &[&str] = &[
 
 /// Apply any migrations newer than the stored `user_version`.
 pub fn run(conn: &Connection) -> Result<(), DbError> {
-    let current: i64 =
-        conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let current: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     let current = current.max(0) as usize;
 
     for (idx, script) in MIGRATIONS.iter().enumerate().skip(current) {

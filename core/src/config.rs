@@ -64,7 +64,9 @@ impl Config {
     /// minimum rather than silently clamping, so the UI can surface it.
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.poll_interval_minutes < MIN_POLL_INTERVAL_MINUTES {
-            return Err(ConfigError::PollIntervalTooSmall(self.poll_interval_minutes));
+            return Err(ConfigError::PollIntervalTooSmall(
+                self.poll_interval_minutes,
+            ));
         }
         Ok(())
     }
@@ -142,10 +144,7 @@ mod tests {
     fn load_missing_file_is_default() {
         let path = std::path::Path::new("/nonexistent/fodder/does-not-exist.toml");
         let cfg = Config::load(path).unwrap();
-        assert_eq!(
-            cfg.poll_interval_minutes,
-            DEFAULT_POLL_INTERVAL_MINUTES
-        );
+        assert_eq!(cfg.poll_interval_minutes, DEFAULT_POLL_INTERVAL_MINUTES);
     }
 
     #[test]
