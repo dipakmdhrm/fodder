@@ -257,6 +257,10 @@ jobs:
         run: |
           cd pages
           mkdir -p conf
+          # Note: no `SignWith` here. reprepro signs Release via gpgme, which
+          # fails with an opaque "General error" on the runner. Instead we let
+          # reprepro build the repo unsigned and sign Release ourselves below
+          # with direct gpg calls (reliable with a passphrase-less key).
           {
             echo "Origin: Fodder"
             echo "Label: Fodder"
@@ -264,13 +268,19 @@ jobs:
             echo "Architectures: amd64 arm64"
             echo "Components: main"
             echo "Description: Fodder APT repository"
-            echo "SignWith: ${FPR}"
           } > conf/distributions
           gpg --armor --export "$FPR" | gpg --dearmor > key.gpg
           reprepro -b . remove stable fodder 2>/dev/null || true
           for deb in ../artifacts/deb-*/*.deb; do
             reprepro -b . includedeb stable "$deb"
           done
+          # Sign the generated Release file ourselves: InRelease (inline) and
+          # Release.gpg (detached), which is what apt clients fetch.
+          rel="dists/stable/Release"
+          gpg --batch --yes --pinentry-mode loopback --local-user "$FPR" \
+            --clearsign -o "dists/stable/InRelease" "$rel"
+          gpg --batch --yes --pinentry-mode loopback --local-user "$FPR" \
+            -abs -o "dists/stable/Release.gpg" "$rel"
 
       - name: Assemble flatpak repository
         env:
