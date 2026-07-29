@@ -299,13 +299,18 @@ jobs:
           FPR: ${{ steps.gpg.outputs.FPR }}
         run: |
           cd pages
-          mkdir -p flatpak
-          # Merge each arch's ostree repo into the shared published repo.
+          # The published repo must be an initialized ostree archive repo
+          # before pull-local can merge into it. Initialize once; on later
+          # releases the repo already exists on gh-pages, so skip re-init.
+          if [ ! -d flatpak/objects ]; then
+            ostree init --repo=flatpak --mode=archive
+          fi
+          # Merge each arch's built ostree repo into the shared published repo.
           for r in ../artifacts/flatpak-repo-*; do
-            ostree --repo=flatpak pull-local "$r" 2>/dev/null || \
-              flatpak build-commit-from --src-repo="$r" flatpak 2>/dev/null || true
+            ostree --repo=flatpak pull-local "$r"
           done
-          flatpak build-update-repo --gpg-sign="$FPR" flatpak || true
+          # Regenerate summary + sign (passphrase is preset in the agent).
+          flatpak build-update-repo --gpg-sign="$FPR" flatpak
           gpg --armor --export "$FPR" > flatpak/fodder.gpg
           cat > fodder.flatpakrepo <<EOF
           [Flatpak Repo]
