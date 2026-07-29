@@ -10,6 +10,8 @@ use thiserror::Error;
 pub const MIN_POLL_INTERVAL_MINUTES: u32 = 5;
 /// Default poll interval when no config exists yet.
 pub const DEFAULT_POLL_INTERVAL_MINUTES: u32 = 30;
+/// Default daily-reminder time (local, 24-hour).
+pub const DEFAULT_REMINDER_TIME: &str = "10:00";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -33,6 +35,14 @@ pub struct Config {
     pub autostart: bool,
     /// Max concurrent feed fetches per poll cycle.
     pub poll_concurrency: usize,
+    /// Master switch for all desktop notifications.
+    pub notifications_enabled: bool,
+    /// Notify (per feed) when polling finds new articles.
+    pub notify_new_articles: bool,
+    /// Send a once-a-day reminder to read, if there are unread articles.
+    pub daily_reminder_enabled: bool,
+    /// Local time of the daily reminder, as `"HH:MM"` (24-hour).
+    pub daily_reminder_time: String,
 }
 
 impl Default for Config {
@@ -41,6 +51,10 @@ impl Default for Config {
             poll_interval_minutes: DEFAULT_POLL_INTERVAL_MINUTES,
             autostart: false,
             poll_concurrency: 8,
+            notifications_enabled: true,
+            notify_new_articles: true,
+            daily_reminder_enabled: false,
+            daily_reminder_time: DEFAULT_REMINDER_TIME.to_string(),
         }
     }
 }
@@ -68,6 +82,9 @@ impl Config {
                 if cfg.poll_concurrency == 0 {
                     cfg.poll_concurrency = 1;
                 }
+                if cfg.reminder_hm().is_none() {
+                    cfg.daily_reminder_time = DEFAULT_REMINDER_TIME.to_string();
+                }
                 Ok(cfg)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
@@ -88,6 +105,15 @@ impl Config {
     /// The poll interval as a [`std::time::Duration`].
     pub fn poll_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(u64::from(self.poll_interval_minutes) * 60)
+    }
+
+    /// Parse [`Config::daily_reminder_time`] into `(hour, minute)`, or `None` if
+    /// it isn't a valid 24-hour `"HH:MM"`.
+    pub fn reminder_hm(&self) -> Option<(u32, u32)> {
+        let (h, m) = self.daily_reminder_time.split_once(':')?;
+        let hour: u32 = h.trim().parse().ok()?;
+        let minute: u32 = m.trim().parse().ok()?;
+        (hour < 24 && minute < 60).then_some((hour, minute))
     }
 }
 
@@ -142,12 +168,42 @@ mod tests {
             poll_interval_minutes: 45,
             autostart: true,
             poll_concurrency: 4,
+            daily_reminder_enabled: true,
+            daily_reminder_time: "07:30".to_string(),
+            notify_new_articles: false,
+            ..Config::default()
         };
         cfg.save(&path).unwrap();
         let back = Config::load(&path).unwrap();
         assert_eq!(back.poll_interval_minutes, 45);
         assert!(back.autostart);
         assert_eq!(back.poll_concurrency, 4);
+        assert!(back.daily_reminder_enabled);
+        assert_eq!(back.daily_reminder_time, "07:30");
+        assert!(!back.notify_new_articles);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn reminder_time_parsing() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.reminder_hm(), Some((10, 0)));
+        cfg.daily_reminder_time = "07:05".into();
+        assert_eq!(cfg.reminder_hm(), Some((7, 5)));
+        cfg.daily_reminder_time = "25:00".into();
+        assert_eq!(cfg.reminder_hm(), None);
+        cfg.daily_reminder_time = "garbage".into();
+        assert_eq!(cfg.reminder_hm(), None);
+    }
+
+    #[test]
+    fn load_resets_invalid_reminder_time() {
+        let dir = std::env::temp_dir().join("fodder-cfg-test-reminder");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "daily_reminder_time = \"99:99\"\n").unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.daily_reminder_time, DEFAULT_REMINDER_TIME);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

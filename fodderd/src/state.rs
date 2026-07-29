@@ -1,7 +1,7 @@
 //! Shared daemon state and the blocking-DB bridge.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use fodder_core::db::{Db, DbError};
 use fodder_core::ipc::IpcMessage;
@@ -9,7 +9,7 @@ use fodder_core::poller::Poller;
 use fodder_core::Config;
 use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Notify};
 
 /// A request to bring the viewer to the foreground (from a notification click,
 /// a second `fodderd` launch, or a tray action in M3).
@@ -34,7 +34,10 @@ pub type DbHandle = Arc<Mutex<Db>>;
 pub struct AppCtx {
     pub db: DbHandle,
     pub poller: Arc<Poller>,
-    pub config: Arc<Config>,
+    /// Live config, reloaded from disk on `ReloadConfig`.
+    pub config: Arc<RwLock<Config>>,
+    /// Wakes the daily-reminder task to recompute after a config change.
+    pub reminder_reload: Arc<Notify>,
     /// Outbound channel to the currently-connected viewer, if any. Set on
     /// `ViewerHello`, cleared on disconnect.
     pub viewer: Arc<Mutex<Option<UnboundedSender<IpcMessage>>>>,
@@ -76,6 +79,23 @@ impl AppCtx {
             tx.send(msg).is_ok()
         } else {
             false
+        }
+    }
+
+    /// A snapshot of the current config.
+    pub fn config(&self) -> Config {
+        self.config.read().expect("config lock poisoned").clone()
+    }
+
+    /// Reload the config from disk (on `ReloadConfig`) and wake the reminder.
+    pub fn reload_config(&self) {
+        match Config::load(&fodder_core::paths::config_path().unwrap_or_default()) {
+            Ok(cfg) => {
+                *self.config.write().expect("config lock poisoned") = cfg;
+                self.reminder_reload.notify_one();
+                tracing::info!("config reloaded");
+            }
+            Err(e) => tracing::warn!("config reload failed: {e}"),
         }
     }
 

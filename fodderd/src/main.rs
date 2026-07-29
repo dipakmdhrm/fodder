@@ -6,6 +6,7 @@
 //! drives the open-request path.
 
 mod notify;
+mod reminder;
 mod scheduler;
 mod server;
 mod single_instance;
@@ -14,7 +15,7 @@ mod tray;
 mod viewer_proc;
 
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result};
 use fodder_core::db::Db;
@@ -64,7 +65,8 @@ async fn main() -> Result<()> {
     let ctx = AppCtx {
         db: Arc::new(Mutex::new(db)),
         poller: Arc::new(poller),
-        config: Arc::new(config),
+        config: Arc::new(RwLock::new(config)),
+        reminder_reload: Arc::new(Notify::new()),
         viewer: Arc::new(Mutex::new(None)),
         viewer_alive: Arc::new(AtomicBool::new(false)),
         pending_open: Arc::new(Mutex::new(None)),
@@ -86,6 +88,9 @@ async fn main() -> Result<()> {
     let open_ctx = ctx.clone();
     let open_task = tokio::spawn(async move { run_open_handler(open_ctx, open_rx).await });
 
+    let reminder_ctx = ctx.clone();
+    let reminder_task = tokio::spawn(async move { reminder::run(reminder_ctx).await });
+
     // Run until interrupted or the tray's Quit is chosen.
     wait_for_shutdown(&shutdown).await;
     tracing::info!("shutting down");
@@ -98,6 +103,7 @@ async fn main() -> Result<()> {
     server_task.abort();
     sched_task.abort();
     open_task.abort();
+    reminder_task.abort();
     let _ = std::fs::remove_file(&socket_path);
 
     Ok(())

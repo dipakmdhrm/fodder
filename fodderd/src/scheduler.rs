@@ -115,7 +115,7 @@ async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<()
         feeds_to_poll.iter().map(|f| (f.id, f.clone())).collect();
 
     let outcomes = ctx.poller.poll_all(feeds_to_poll).await;
-    let interval = ctx.config.poll_interval();
+    let interval = ctx.config().poll_interval();
     let now = Utc::now();
     let mut any_new = false;
 
@@ -227,13 +227,17 @@ async fn store_updated(
     let count = new_items.len();
     if count > 0 {
         tracing::info!("feed {feed_id}: {count} new article(s)");
-        // Use the possibly-updated title for the notification.
-        let feed_title = ctx
-            .with_conn(move |c| feeds::get_feed(c, feed_id))
-            .await?
-            .map(|f| f.title)
-            .unwrap_or_default();
-        notify::notify_feed(feed_id, feed_title, new_items, ctx.open_tx.clone());
+        // Only notify if notifications and the new-article option are enabled.
+        let cfg = ctx.config();
+        if cfg.notifications_enabled && cfg.notify_new_articles {
+            // Use the possibly-updated title for the notification.
+            let feed_title = ctx
+                .with_conn(move |c| feeds::get_feed(c, feed_id))
+                .await?
+                .map(|f| f.title)
+                .unwrap_or_default();
+            notify::notify_feed(feed_id, feed_title, new_items, ctx.open_tx.clone());
+        }
     }
     Ok(count)
 }

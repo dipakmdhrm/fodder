@@ -1101,10 +1101,32 @@ impl App {
         dialog.present(Some(&self.window));
     }
 
-    /// The preferences dialog: autostart toggle + poll interval.
+    /// Load the config, apply `mutate`, save it, and tell the daemon to reload.
+    fn save_config_and_reload(&self, mutate: impl FnOnce(&mut Config)) {
+        if let Ok(path) = paths::config_path() {
+            let mut cfg = Config::load(&path).unwrap_or_default();
+            mutate(&mut cfg);
+            if cfg.poll_interval_minutes < 5 {
+                cfg.poll_interval_minutes = 5;
+            }
+            if let Err(e) = cfg.save(&path) {
+                tracing::warn!("saving config failed: {e}");
+                return;
+            }
+        }
+        let _ = self.cmd_tx.send(IpcMessage::ReloadConfig);
+    }
+
+    /// The preferences dialog: general + notification settings.
     fn open_settings(self: &Rc<Self>) {
-        let group = adw::PreferencesGroup::new();
-        group.set_title("General");
+        let cfg = paths::config_path()
+            .ok()
+            .map(|p| Config::load(&p).unwrap_or_default())
+            .unwrap_or_default();
+
+        // --- General ---
+        let general = adw::PreferencesGroup::new();
+        general.set_title("General");
 
         let autostart = adw::SwitchRow::new();
         autostart.set_title("Start daemon at login");
@@ -1115,29 +1137,108 @@ impl App {
                 tracing::warn!("autostart toggle failed: {e}");
             }
         });
-        group.add(&autostart);
+        general.add(&autostart);
 
         let interval = adw::SpinRow::with_range(5.0, 1440.0, 5.0);
         interval.set_title("Poll interval (minutes)");
-        interval.set_subtitle("Minimum 5. Applies after the daemon restarts.");
-        let current = paths::config_path()
-            .ok()
-            .map(|p| Config::load(&p).unwrap_or_default())
-            .unwrap_or_default();
-        interval.set_value(f64::from(current.poll_interval_minutes));
-        interval.connect_value_notify(|row| {
-            if let Ok(path) = paths::config_path() {
-                let mut cfg = Config::load(&path).unwrap_or_default();
-                cfg.poll_interval_minutes = (row.value() as u32).max(5);
-                if let Err(e) = cfg.save(&path) {
-                    tracing::warn!("saving config failed: {e}");
-                }
-            }
+        interval.set_subtitle("Minimum 5");
+        interval.set_value(f64::from(cfg.poll_interval_minutes));
+        let app = self.clone();
+        interval.connect_value_notify(move |row| {
+            let minutes = row.value() as u32;
+            app.save_config_and_reload(move |c| c.poll_interval_minutes = minutes);
         });
-        group.add(&interval);
+        general.add(&interval);
+
+        // --- Notifications ---
+        let notif = adw::PreferencesGroup::new();
+        notif.set_title("Notifications");
+
+        let master = adw::SwitchRow::new();
+        master.set_title("Enable notifications");
+        master.set_active(cfg.notifications_enabled);
+        notif.add(&master);
+
+        let new_articles = adw::SwitchRow::new();
+        new_articles.set_title("New articles");
+        new_articles.set_subtitle("Notify when polling finds new articles");
+        new_articles.set_active(cfg.notify_new_articles);
+        notif.add(&new_articles);
+
+        let reminder = adw::SwitchRow::new();
+        reminder.set_title("Daily reading reminder");
+        reminder.set_subtitle("Once a day, if you have unread articles");
+        reminder.set_active(cfg.daily_reminder_enabled);
+        notif.add(&reminder);
+
+        let (h0, m0) = cfg.reminder_hm().unwrap_or((10, 0));
+        let hour = time_spin(0.0, 23.0, h0);
+        let minute = time_spin(0.0, 59.0, m0);
+        let time_box = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        time_box.set_valign(gtk::Align::Center);
+        time_box.append(&hour);
+        time_box.append(&gtk::Label::new(Some(":")));
+        time_box.append(&minute);
+        let time_row = adw::ActionRow::new();
+        time_row.set_title("Reminder time");
+        time_row.add_suffix(&time_box);
+        notif.add(&time_row);
+
+        // Conditional visibility: master gates the sub-options; the reminder
+        // switch gates the time row.
+        let update_vis: Rc<dyn Fn()> = {
+            let master = master.clone();
+            let reminder = reminder.clone();
+            let new_articles = new_articles.clone();
+            let time_row = time_row.clone();
+            Rc::new(move || {
+                let on = master.is_active();
+                new_articles.set_visible(on);
+                reminder.set_visible(on);
+                time_row.set_visible(on && reminder.is_active());
+            })
+        };
+        update_vis();
+
+        let app = self.clone();
+        let uv = update_vis.clone();
+        master.connect_active_notify(move |row| {
+            uv();
+            let on = row.is_active();
+            app.save_config_and_reload(move |c| c.notifications_enabled = on);
+        });
+
+        let app = self.clone();
+        new_articles.connect_active_notify(move |row| {
+            let on = row.is_active();
+            app.save_config_and_reload(move |c| c.notify_new_articles = on);
+        });
+
+        let app = self.clone();
+        let uv = update_vis.clone();
+        reminder.connect_active_notify(move |row| {
+            uv();
+            let on = row.is_active();
+            app.save_config_and_reload(move |c| c.daily_reminder_enabled = on);
+        });
+
+        let save_time = {
+            let app = self.clone();
+            let hour = hour.clone();
+            let minute = minute.clone();
+            Rc::new(move || {
+                let t = format!("{:02}:{:02}", hour.value() as u32, minute.value() as u32);
+                app.save_config_and_reload(move |c| c.daily_reminder_time = t);
+            })
+        };
+        let st = save_time.clone();
+        hour.connect_value_changed(move |_| st());
+        let st = save_time.clone();
+        minute.connect_value_changed(move |_| st());
 
         let page = adw::PreferencesPage::new();
-        page.add(&group);
+        page.add(&general);
+        page.add(&notif);
         let dialog = adw::PreferencesDialog::new();
         dialog.add(&page);
         dialog.present(Some(&self.window));
@@ -1298,6 +1399,19 @@ fn configure_webview(url: Option<&str>, content: &str) -> webkit6::WebView {
         _ => webview.load_html(content, None),
     }
     webview
+}
+
+/// A wrapping spin button (for hour/minute) that displays values zero-padded.
+fn time_spin(min: f64, max: f64, value: u32) -> gtk::SpinButton {
+    let spin = gtk::SpinButton::with_range(min, max, 1.0);
+    spin.set_wrap(true);
+    spin.set_numeric(true);
+    spin.set_value(f64::from(value));
+    spin.connect_output(|spin| {
+        spin.set_text(&format!("{:02}", spin.value() as u32));
+        glib::Propagation::Stop
+    });
+    spin
 }
 
 fn status_page(icon: &str, title: &str, description: &str) -> adw::StatusPage {

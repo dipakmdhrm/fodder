@@ -37,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
     let msg = match cmd.as_str() {
         "ping" => IpcMessage::Ping,
         "open" => IpcMessage::OpenViewer,
+        "reload" => IpcMessage::ReloadConfig,
         "refresh" => IpcMessage::RefreshNow {
             feed_id: args.next().and_then(|s| s.parse().ok()),
         },

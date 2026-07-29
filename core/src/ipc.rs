@@ -29,6 +29,8 @@ pub enum IpcMessage {
     RefreshNow { feed_id: Option<i64> },
     /// A resolved subscription the daemon should persist and start polling.
     SubscribeResolved { feed_url: String, title: String },
+    /// The config file changed; the daemon should reload it.
+    ReloadConfig,
 
     // --- daemon -> viewer ---
     /// Raise/show the viewer window.
@@ -115,6 +117,7 @@ mod tests {
                 feed_url: "https://e.com/f".into(),
                 title: "E".into(),
             },
+            IpcMessage::ReloadConfig,
             IpcMessage::OpenViewer,
             IpcMessage::OpenAt {
                 feed_id: 3,

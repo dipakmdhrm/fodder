@@ -109,6 +109,10 @@ async fn handle_msg(
             let reply = subscribe(ctx, feed_url, title).await;
             let _ = out_tx.send(reply);
         }
+        IpcMessage::ReloadConfig => {
+            ctx.reload_config();
+            let _ = out_tx.send(IpcMessage::Ack);
+        }
         IpcMessage::OpenViewer => {
             let _ = ctx.open_tx.send(OpenRequest::Show);
             let _ = out_tx.send(IpcMessage::Ack);

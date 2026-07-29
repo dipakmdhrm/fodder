@@ -69,3 +69,30 @@ pub fn notify_feed(
         }
     });
 }
+
+/// Show the daily reading reminder. Clicking it opens the viewer.
+pub fn notify_reminder(unread: i64, open_tx: UnboundedSender<OpenRequest>) {
+    std::thread::spawn(move || {
+        let body = if unread == 1 {
+            "You have 1 unread article.".to_string()
+        } else {
+            format!("You have {unread} unread articles.")
+        };
+        let handle = Notification::new()
+            .appname("Fodder Reader")
+            .summary("Time to catch up")
+            .body(&body)
+            .icon("application-rss+xml")
+            .action("default", "Open")
+            .show();
+
+        match handle {
+            Ok(handle) => handle.wait_for_action(|action| {
+                if action == "default" || action == "__clicked" {
+                    let _ = open_tx.send(OpenRequest::Show);
+                }
+            }),
+            Err(e) => tracing::warn!("reminder notification failed: {e}"),
+        }
+    });
+}

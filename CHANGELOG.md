@@ -9,6 +9,15 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 ### Planned
 - **M6** — Integration pass across GNOME / KDE / XFCE / Sway.
 
+### Notifications & live settings
+- Notification preferences: a master **Enable notifications** switch gating
+  **New articles** (the per-feed poll notifications) and a **Daily reading
+  reminder** at a chosen local time (hour/minute), which fires once a day only
+  when there are unread articles and the viewer is closed.
+- Settings now apply **live**: the viewer sends a `ReloadConfig` IPC message on
+  every change and the daemon re-reads its config immediately (no restart) —
+  this also makes the poll-interval change take effect at once.
+
 ### M5 — WebKit reader, discovery, settings
 - Reader toggle switches the light (Pango) renderer to a full **WebKitGTK**
   view that loads the **live article page** (HTML/CSS/images as the site serves
