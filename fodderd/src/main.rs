@@ -8,13 +8,14 @@
 mod notify;
 mod reminder;
 mod scheduler;
+mod self_update;
 mod server;
 mod single_instance;
 mod state;
 mod tray;
 mod viewer_proc;
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result};
@@ -101,6 +102,19 @@ async fn main() -> Result<()> {
     let reminder_ctx = ctx.clone();
     let reminder_task = tokio::spawn(async move { reminder::run(reminder_ctx).await });
 
+    // Restart onto the new binary when a package upgrade replaces it under us,
+    // so the tray/daemon don't vanish until the next login. Release builds
+    // only: dev rebuilds shouldn't bounce a daemon you're debugging.
+    let reexec = Arc::new(AtomicBool::new(false));
+    let exe_path = std::env::current_exe().ok();
+    if !cfg!(debug_assertions) {
+        if let Some(exe) = exe_path.clone() {
+            let reexec = reexec.clone();
+            let shutdown = shutdown.clone();
+            tokio::spawn(self_update::watch(exe, reexec, shutdown));
+        }
+    }
+
     // Opened from the app menu → spawn the viewer now that the daemon is up.
     if open_viewer {
         let _ = ctx.open_tx.send(OpenRequest::Show);
@@ -120,6 +134,16 @@ async fn main() -> Result<()> {
     open_task.abort();
     reminder_task.abort();
     let _ = std::fs::remove_file(&socket_path);
+
+    // Triggered by a binary upgrade rather than a real quit: now that the
+    // socket, tray, and viewer are gone, hand off to the new binary in place.
+    if reexec.load(Ordering::SeqCst) {
+        if let Some(exe) = exe_path {
+            tracing::info!("re-executing {}", exe.display());
+            let err = self_update::reexec_into(&exe);
+            tracing::error!("re-exec failed, exiting: {err}");
+        }
+    }
 
     Ok(())
 }

@@ -6,6 +6,16 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Changed
+- The daemon now survives package upgrades gracefully: when the installed
+  `fodderd` binary is replaced (`apt upgrade`, `dnf upgrade`, `pacman -Syu`),
+  the running daemon detects it and re-execs the new binary in place, so the
+  tray comes right back on the new version instead of disappearing until the
+  next login. The deb `prerm` no longer stops the daemon on upgrade (only on
+  removal); the rpm/Arch scripts already skipped upgrades.
+
+## 0.1.2
+
 ### Build & release
 - The Arch package now builds again: it links the **system** SQLite (its
   PKGBUILD drops rusqlite's `bundled` feature) instead of the vendored copy,
