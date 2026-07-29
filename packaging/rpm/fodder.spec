@@ -1,3 +1,14 @@
+# The release profile already strips the binaries (Cargo.toml
+# [profile.release] strip = true), so there are no useful symbols to package.
+# Disabling the debug packages skips find-debuginfo entirely, which drops the
+# ~150 MB of unused -debuginfo/-debugsource RPMs and shortens the build.
+%global debug_package %{nil}
+
+# Cargo target dir. Defaults to the in-tree "target" (unchanged local build);
+# CI overrides it with --define "cargo_target <path>" to a cached location so
+# dependency builds are reused across releases.
+%{!?cargo_target: %global cargo_target target}
+
 Name:           fodder
 Version:        @VERSION@
 Release:        1%{?dist}
@@ -26,11 +37,11 @@ Fodder is a frugal feed reader for the Linux desktop: a headless daemon
 %autosetup
 
 %build
-cargo build --release --workspace --locked
+cargo build --release --workspace --locked --target-dir %{cargo_target}
 
 %install
-install -Dm 755 target/release/fodderd %{buildroot}%{_bindir}/fodderd
-install -Dm 755 target/release/fodder  %{buildroot}%{_bindir}/fodder
+install -Dm 755 %{cargo_target}/release/fodderd %{buildroot}%{_bindir}/fodderd
+install -Dm 755 %{cargo_target}/release/fodder  %{buildroot}%{_bindir}/fodder
 install -Dm 644 data/applications/io.github.dipakmdhrm.Fodder.desktop \
     %{buildroot}%{_datadir}/applications/io.github.dipakmdhrm.Fodder.desktop
 

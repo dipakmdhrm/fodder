@@ -92,10 +92,22 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          dnf install -y git rpm-build cargo rust gcc \
+          # tar + zstd are needed by actions/cache inside the minimal container.
+          dnf install -y git rpm-build cargo rust gcc tar zstd \
             gtk4-devel libadwaita-devel webkitgtk6.0-devel
 
       - uses: actions/checkout@v4
+
+      # Cache the expensive dependency builds (gtk4-sys, webkit6-sys, ring,
+      # bundled SQLite, ...) so only the workspace crates recompile. This is
+      # what makes the deb job fast; the container job lacked it. rpmbuild
+      # normally compiles in an ephemeral BUILD dir, so we redirect cargo's
+      # target dir to a stable, cacheable path (see the spec's cargo_target
+      # macro + --define below) and point rust-cache at it.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: rpm-${{ matrix.rpmarch }}
+          workspaces: ". -> rpm-target"
 
       - name: Build .rpm
         run: |
@@ -110,7 +122,10 @@ jobs:
           sed -e "s/@VERSION@/${VERSION}/g" -e "s/@CHANGELOG_DATE@/${CHANGELOG_DATE}/g" \
             packaging/rpm/fodder.spec > rpmbuild/SPECS/fodder.spec
 
-          rpmbuild --define "_topdir ${PWD}/rpmbuild" -bb rpmbuild/SPECS/fodder.spec
+          # Compile into the cached target dir shared with rust-cache above.
+          rpmbuild --define "_topdir ${PWD}/rpmbuild" \
+            --define "cargo_target ${GITHUB_WORKSPACE}/rpm-target" \
+            -bb rpmbuild/SPECS/fodder.spec
           find rpmbuild/RPMS -name '*.rpm' -exec cp {} . \;
 
       - uses: actions/upload-artifact@v4
@@ -174,6 +189,16 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+
+      # flatpak-builder validates its cache by source checksum, so this safely
+      # skips rebuilding unchanged modules (big win when re-running the same
+      # tag; a cache miss just falls back to a full build).
+      - uses: actions/cache@v4
+        with:
+          path: .flatpak-builder
+          key: flatpak-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/**', 'Cargo.lock') }}
+          restore-keys: |
+            flatpak-${{ matrix.arch }}-
 
       - name: Install flatpak-builder + runtime
         run: |
