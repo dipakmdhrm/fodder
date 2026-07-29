@@ -80,6 +80,16 @@ async fn handle_msg(
             let _ = out_tx.send(IpcMessage::Pong);
         }
         IpcMessage::ViewerHello => {
+            let already_connected =
+                ctx.viewer.lock().expect("viewer mutex poisoned").is_some();
+            if already_connected {
+                // Enforce exactly one viewer: raise the existing one and tell
+                // this duplicate to exit.
+                tracing::info!("duplicate viewer rejected; raising the existing one");
+                ctx.send_to_viewer(IpcMessage::OpenViewer);
+                let _ = out_tx.send(IpcMessage::Error("viewer already running".into()));
+                return true;
+            }
             *is_viewer = true;
             *ctx.viewer.lock().expect("viewer mutex poisoned") = Some(out_tx.clone());
             ctx.set_viewer_alive(true);

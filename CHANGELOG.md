@@ -7,11 +7,27 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 ## Unreleased
 
 ### Planned
-- **M4** — Viewer: 3-pane libadwaita UI, feed/article lists, sanitized light
-  reader, mark-read / mark-all-read / refresh / open-in-browser.
 - **M5** — Viewer: WebKit reader toggle, discovery-driven subscribe/remove,
   settings (autostart, poll interval).
 - **M6** — Integration pass across GNOME / KDE / XFCE / Sway.
+
+### M4 — Viewer UI
+- 3-pane libadwaita layout (`OverlaySplitView` + `NavigationSplitView`):
+  feeds sidebar | article list | reader.
+- Feeds sidebar with per-feed unread counts (unread feeds bold) and an
+  "All Articles" aggregate; error feeds flagged with a warning icon.
+- Article list per feed (newest first), unread articles bold, mark-as-read
+  on open (un-bolds in place and updates badges).
+- Sanitized light reader: article HTML → `ammonia` → whitelist Pango markup
+  (no scripts, no network). Selectable text, clickable links.
+- Actions: refresh-now (IPC `RefreshNow`), mark-all-read, open-in-browser,
+  add feed (raw URL for now), remove feed (with confirm + cascade delete).
+- tokio↔glib async bridge: blocking SQLite on the tokio pool, results applied
+  on the GTK main thread via `spawn_future_local`.
+- IPC client: `ViewerHello` handshake, live reload on `FeedsChanged`,
+  navigate on `OpenAt`; the daemon rejects a duplicate viewer and raises the
+  existing one.
+- Empty / loading / error states for the article and reader panes.
 
 ### M3 — Tray & viewer process management
 - StatusNotifierItem system tray via `ksni` (Open / Refresh all / Quit;

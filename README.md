@@ -15,7 +15,7 @@ A Cargo workspace with three crates:
 |-------|------|----------------|
 | `core` (`fodder-core`) | library | Models, SQLite store + migrations, HTTP poller (conditional GET), feed discovery, config, IPC protocol. |
 | `fodderd` | binary | Headless daemon: tokio poll loop, shared SQLite (WAL), desktop notifications, single-instance IPC socket, system-tray icon, and on-demand viewer spawning. |
-| `fodder` | binary | GTK4 + libadwaita viewer *(the 3-pane UI lands in M4; currently a placeholder window)*. |
+| `fodder` | binary | GTK4 + libadwaita viewer: 3-pane UI (feeds / articles / reader) with a sanitized light reader. *(WebKit reader toggle + settings land in M5.)* |
 
 **Process model.** `fodderd` is the primary process and stays resident. The
 `fodder` viewer is launched on demand and terminated on close. Exactly one
@@ -44,14 +44,17 @@ cargo test --workspace      # run the test suite
 
 ## Running (current state)
 
-The daemon runs, polls feeds, shows a tray icon, and can spawn the viewer; the
-viewer window itself is still a placeholder. Until the GTK UI lands, a couple of
-example tools let you exercise the working parts.
+The daemon runs, polls feeds, shows a tray icon, and spawns the viewer on
+demand. The viewer is a working 3-pane reader (add/remove feeds, read articles,
+mark read, refresh). The example CLI tools remain handy for scripting.
 
 ```bash
 # Run the daemon (foreground, with logs). Shows a tray icon where supported;
 # left-click or the tray's "Open Fodder" spawns the viewer.
 RUST_LOG=info cargo run -p fodderd
+
+# Or launch the viewer directly (it connects back to the daemon)
+cargo run -p fodder
 
 # Drive the daemon over IPC (in another terminal)
 cargo run -p fodderd --example ctl -- ping
