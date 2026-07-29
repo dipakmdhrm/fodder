@@ -16,7 +16,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── Version from the tag ──────────────────────────────────────────────────
+  # Version from the tag
   get-version:
     runs-on: ubuntu-latest
     outputs:
@@ -25,7 +25,7 @@ jobs:
       - id: v
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-  # ── .deb (amd64 + arm64) ──────────────────────────────────────────────────
+  # .deb (amd64 + arm64)
   build-deb:
     needs: get-version
     strategy:
@@ -77,7 +77,7 @@ jobs:
           name: deb-${{ matrix.arch }}
           path: fodder_*.deb
 
-  # ── .rpm (x86_64 + aarch64), built inside Fedora ──────────────────────────
+  # .rpm (x86_64 + aarch64), built inside Fedora
   build-rpm:
     needs: get-version
     strategy:
@@ -118,7 +118,7 @@ jobs:
           name: rpm-${{ matrix.rpmarch }}
           path: "*.rpm"
 
-  # ── Arch package (x86_64), built inside Arch ──────────────────────────────
+  # Arch package (x86_64), built inside Arch
   build-arch:
     needs: get-version
     runs-on: ubuntu-latest
@@ -154,7 +154,7 @@ jobs:
           name: arch
           path: arch-build/*.pkg.tar.zst
 
-  # ── Flatpak bundle + per-arch ostree repo (amd64 + arm64) ─────────────────
+  # Flatpak bundle + per-arch ostree repo (amd64 + arm64)
   build-flatpak:
     needs: get-version
     strategy:
@@ -193,7 +193,7 @@ jobs:
           name: flatpak-repo-${{ matrix.arch }}
           path: repo
 
-  # ── Publish auto-update repos (apt + flatpak) to gh-pages ─────────────────
+  # Publish auto-update repos (apt + flatpak) to gh-pages
   #
   # Best-effort: a failure here does not block the GitHub Release below.
   pages:
@@ -286,7 +286,7 @@ jobs:
           git commit -m "Release v${VERSION}" || echo "nothing to commit"
           git push origin gh-pages
 
-  # ── GitHub Release with all artifacts ─────────────────────────────────────
+  # GitHub Release with all artifacts
   release:
     needs: [get-version, build-deb, build-rpm, build-arch, build-flatpak]
     runs-on: ubuntu-latest
