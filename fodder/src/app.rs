@@ -11,7 +11,7 @@ use fodder_core::models::Article;
 use fodder_core::paths;
 use gtk4 as gtk;
 use gtk::prelude::*;
-use gtk::{gio, glib, pango};
+use gtk::{gdk, gio, glib, pango};
 use libadwaita as adw;
 use adw::prelude::*;
 use tokio::sync::mpsc::{self, UnboundedSender};
@@ -213,7 +213,7 @@ fn assemble(
     reader_stack.add_named(&reader_error, Some("error"));
     reader_stack.set_visible_child_name("empty");
 
-    let open_btn = icon_button("web-browser-symbolic", "Open in browser");
+    let open_btn = icon_button(browser_icon_name(), "Open in browser");
     let reader_header = adw::HeaderBar::new();
     reader_header.set_title_widget(Some(&adw::WindowTitle::new("Reader", "")));
     reader_header.pack_end(&open_btn);
@@ -702,6 +702,18 @@ fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::from_icon_name(icon);
     button.set_tooltip_text(Some(tooltip));
     button
+}
+
+/// Icon for the "open in browser" button: prefer the Firefox logo, but fall
+/// back to the generic web-browser icon if the theme doesn't provide `firefox`
+/// (so it never renders as a broken/missing icon).
+fn browser_icon_name() -> &'static str {
+    if let Some(display) = gdk::Display::default() {
+        if gtk::IconTheme::for_display(&display).has_icon("firefox") {
+            return "firefox";
+        }
+    }
+    "web-browser-symbolic"
 }
 
 fn status_page(icon: &str, title: &str, description: &str) -> adw::StatusPage {
