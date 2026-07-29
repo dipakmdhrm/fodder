@@ -67,20 +67,10 @@ cargo run -p fodder-core --example poll -- https://blog.rust-lang.org/
 > (that's the job of the viewer's add-feed flow in M5). Use it with resolved
 > feed URLs.
 
-## Roadmap
+## Project history & roadmap
 
-- [x] **M1** — Workspace, SQLite schema + migrations, config, HTTP poller with
-  conditional GET (ETag/Last-Modified, 304, 429/Retry-After, backoff), GUID
-  dedupe, feed discovery, IPC protocol. *(35 tests)*
-- [x] **M2** — Daemon: single-instance guard, IPC server, poll scheduler
-  honoring per-feed schedules, batched actionable desktop notifications.
-- [ ] **M3** — Tray icon (with graceful degrade), on-demand viewer spawn/reap,
-  autostart `.desktop` writer.
-- [ ] **M4** — Viewer: 3-pane libadwaita UI, feed/article lists, light
-  (sanitized) reader, mark-read / refresh / open-in-browser.
-- [ ] **M5** — Viewer: WebKit reader toggle, discovery-driven subscribe/remove,
-  settings (autostart, poll interval).
-- [ ] **M6** — Integration pass across desktops.
+See [CHANGELOG.md](CHANGELOG.md) for what has shipped so far and the planned
+milestones.
 
 ## License
 
