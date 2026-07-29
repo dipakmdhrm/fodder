@@ -221,20 +221,28 @@ jobs:
         id: gpg
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
         run: |
-          # Allow non-interactive (loopback) signing so reprepro/gpg don't try to
-          # pop a pinentry prompt on the headless runner.
+          # The signing key is passphrase-protected, so on this headless runner
+          # we must feed the passphrase non-interactively. Two consumers need it:
+          #   - direct gpg (apt Release signing) -> uses loopback + --passphrase
+          #   - gpgme (ostree/flatpak repo signing) -> can't take a flag, so we
+          #     preset the passphrase into gpg-agent for each keygrip.
           mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          # `batch`/`no-tty` are gpg options and belong in gpg.conf; only
-          # `allow-loopback-pinentry` is a valid gpg-agent option. Putting
-          # `batch` in gpg-agent.conf makes the agent refuse to start, which
-          # surfaces later as gpgme "End of file" when reprepro signs.
-          printf 'pinentry-mode loopback\nno-tty\nbatch\n' >> ~/.gnupg/gpg.conf
-          printf 'allow-loopback-pinentry\n' >> ~/.gnupg/gpg-agent.conf
+          printf 'pinentry-mode loopback\n' >> ~/.gnupg/gpg.conf
+          printf 'allow-loopback-pinentry\nallow-preset-passphrase\n' >> ~/.gnupg/gpg-agent.conf
           gpgconf --kill gpg-agent || true
+          gpgconf --launch gpg-agent
           echo "$APT_SIGNING_KEY" | gpg --batch --import
           FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
           echo "${FPR}:6:" | gpg --import-ownertrust
+          # Cache the passphrase in the agent for every secret (sub)key keygrip
+          # so gpgme-based signers don't need a pinentry.
+          PRESET="$(gpgconf --list-dirs libexecdir)/gpg-preset-passphrase"
+          for GRIP in $(gpg --list-secret-keys --with-keygrip --with-colons \
+                          | awk -F: '/^grp/{print $10}'); do
+            printf '%s' "$APT_SIGNING_KEY_PASSPHRASE" | "$PRESET" --preset "$GRIP"
+          done
           echo "FPR=${FPR}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
@@ -254,6 +262,7 @@ jobs:
       - name: Build apt repository
         env:
           FPR: ${{ steps.gpg.outputs.FPR }}
+          APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
         run: |
           cd pages
           mkdir -p conf
@@ -276,13 +285,13 @@ jobs:
           done
           # Sign the generated Release file ourselves: InRelease (inline) and
           # Release.gpg (detached), which is what apt clients fetch.
-          # --passphrase '' + loopback: the key is passphrase-less, but in
-          # batch mode gpg still needs an explicit passphrase source or it
-          # errors with "we are in batchmode - can't get input".
+          # Feed the key's passphrase over loopback so signing works headless.
           rel="dists/stable/Release"
-          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$FPR" \
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$APT_SIGNING_KEY_PASSPHRASE" --local-user "$FPR" \
             --clearsign -o "dists/stable/InRelease" "$rel"
-          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user "$FPR" \
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$APT_SIGNING_KEY_PASSPHRASE" --local-user "$FPR" \
             -abs -o "dists/stable/Release.gpg" "$rel"
 
       - name: Assemble flatpak repository
