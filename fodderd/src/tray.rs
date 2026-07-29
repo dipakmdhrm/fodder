@@ -45,7 +45,7 @@ impl Tray for FodderTray {
     fn menu(&self) -> Vec<MenuItem<Self>> {
         vec![
             StandardItem {
-                label: "Open Fodder".into(),
+                label: "Open".into(),
                 icon_name: "document-open".into(),
                 activate: Box::new(|t: &mut FodderTray| {
                     let _ = t.open_tx.send(OpenRequest::Show);
