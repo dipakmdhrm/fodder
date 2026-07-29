@@ -1,0 +1,5 @@
+Component: main
+Origin: Fodder
+Label: Fodder
+Architecture: arm64
+Description: Fodder APT repository

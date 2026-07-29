@@ -1,0 +1,6 @@
+Origin: Fodder
+Label: Fodder
+Codename: stable
+Architectures: amd64 arm64
+Components: main
+Description: Fodder APT repository
