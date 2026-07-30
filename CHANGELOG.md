@@ -6,6 +6,15 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Fixed
+- The system-tray icon no longer disappears for good when the desktop's SNI
+  host restarts under a long-running daemon (e.g. a GNOME/Wayland session that
+  crashes and relogs). `ksni` recovers only when the watcher's D-Bus name cycles
+  on a live connection, not when its own connection dies; the daemon now
+  supervises the tray on an independent D-Bus connection and re-registers the
+  icon within ~15s whenever a fresh SNI host appears (relogin, shell restart, or
+  a tray extension enabled after the daemon started).
+
 ## 0.1.4
 
 ### Build & release

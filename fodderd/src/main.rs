@@ -86,8 +86,18 @@ async fn main() -> Result<()> {
         reading_state: Arc::new(Mutex::new(state::ReadingState::default())),
     };
 
-    // Best-effort system tray; graceful degrade if no SNI host is present.
-    let tray_handle = tray::try_spawn(open_tx, refresh_tx, shutdown.clone()).await;
+    // System tray, supervised: registers best-effort and re-registers when the
+    // SNI host restarts (session relogin, shell restart) so the icon can't get
+    // stranded after the daemon outlives a graphical session. `tray_shutdown` is
+    // a dedicated teardown signal so we can drain the tray cleanly during
+    // shutdown without contending on the single-waiter global `shutdown`.
+    let tray_shutdown = Arc::new(Notify::new());
+    let tray_task = tokio::spawn(tray::run_supervised(
+        open_tx,
+        refresh_tx,
+        shutdown.clone(),
+        tray_shutdown.clone(),
+    ));
 
     // Long-running tasks.
     let server_ctx = ctx.clone();
@@ -126,9 +136,10 @@ async fn main() -> Result<()> {
 
     // Terminate the viewer child, tear down the tray, and clean up the socket.
     viewer_proc::kill(&ctx);
-    if let Some(handle) = tray_handle {
-        handle.shutdown().await;
-    }
+    // Signal the supervisor and wait for it to remove our item from the bus, so
+    // no stale icon lingers past exit or a self-update re-exec.
+    tray_shutdown.notify_one();
+    let _ = tray_task.await;
     server_task.abort();
     sched_task.abort();
     open_task.abort();

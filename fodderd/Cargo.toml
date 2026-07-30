@@ -19,6 +19,7 @@ rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ksni.workspace = true
+zbus.workspace = true
 notify-rust.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
