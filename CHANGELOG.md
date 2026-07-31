@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.2.0
+
 ### Fixed
 - The system-tray icon no longer disappears after a package upgrade. On upgrade
   the daemon re-execs itself (same PID) and re-registers the *same* tray item
