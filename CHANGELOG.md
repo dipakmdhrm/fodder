@@ -6,6 +6,19 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Fixed
+- The system-tray icon no longer silently disappears while the daemon keeps
+  running. The tray is a StatusNotifierItem registered with the desktop's
+  watcher; the underlying library only re-registers when the watcher restarts on
+  the same bus, which misses drops that don't emit that signal (e.g. a host
+  pruning an item) — leaving the daemon running but iconless. The tray now runs
+  under a **self-heal supervisor** that periodically checks whether our item is
+  still in the watcher's registered list and re-registers it if not, recovering
+  regardless of what dropped it.
+- The tray icon now ships as embedded ARGB pixmaps with an empty themed name, so
+  hosts that mishandle a themed `IconName` (notably the GNOME AppIndicator
+  extension) render our icon instead of a placeholder.
+
 ## 0.1.4
 
 ### Build & release
