@@ -86,12 +86,13 @@ async fn main() -> Result<()> {
         reading_state: Arc::new(Mutex::new(state::ReadingState::default())),
     };
 
-    // Best-effort system tray, supervised: spawn it and keep it registered with
-    // the StatusNotifierWatcher, re-registering if it's ever dropped. Graceful
-    // degrade if no SNI host is present. `tray_stop` lets us tear it down on
-    // shutdown; the tray's Quit action uses the daemon-wide `shutdown`.
+    // Best-effort system tray. `ksni` re-registers across watcher restarts on
+    // its own; `run` adds a one-shot post-startup re-registration check to
+    // neutralize the self_update re-exec handoff. Graceful degrade if no SNI
+    // host is present. `tray_stop` tears it down on shutdown; the tray's Quit
+    // action uses the daemon-wide `shutdown`.
     let tray_stop = Arc::new(Notify::new());
-    let tray_task = tokio::spawn(tray::supervise(
+    let tray_task = tokio::spawn(tray::run(
         open_tx,
         refresh_tx,
         shutdown.clone(),
