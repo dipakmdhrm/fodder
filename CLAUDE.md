@@ -17,16 +17,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    git push -u origin <descriptive-branch-name>
    gh pr create --base main --title "..." --body "..."
    ```
-4. **Wait 5 minutes for automated review comments** (e.g. Gemini Code Assist), then fetch
-   them (`gh api repos/<owner>/<repo>/pulls/<n>/comments`). Validate each comment against
-   the actual code - reviewers can be stale or wrong. Address the valid ones with commits
-   on the same branch; reply to invalid/stale ones explaining why. Resolve the review
-   threads you have handled (GraphQL `resolveReviewThread`), don't just reply.
-5. Wait for CI to pass.
-6. **Never merge a PR - merging is always the user's decision and action**, even when CI
+4. Wait for CI to pass.
+5. **Never merge a PR - merging is always the user's decision and action**, even when CI
    is green and all review comments are addressed. Stop when the PR is ready and report
    its URL.
-7. After the user merges, a release is cut **automatically**: `auto-release.yml`
+6. After the user merges, a release is cut **automatically**: `auto-release.yml`
    (on push to `main`) reads the merged PR's `release:*` label for the bump size
    (default patch; `release:skip` opts out), bumps `Cargo.toml`/`Cargo.lock`,
    stamps `CHANGELOG.md`, tags `vX.Y.Z`, and hands off to `release.yml`. It
