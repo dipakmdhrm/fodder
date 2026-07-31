@@ -86,8 +86,18 @@ async fn main() -> Result<()> {
         reading_state: Arc::new(Mutex::new(state::ReadingState::default())),
     };
 
-    // Best-effort system tray; graceful degrade if no SNI host is present.
-    let tray_handle = tray::try_spawn(open_tx, refresh_tx, shutdown.clone()).await;
+    // Best-effort system tray. `ksni` re-registers across watcher restarts on
+    // its own; `run` adds a one-shot post-startup re-registration check to
+    // neutralize the self_update re-exec handoff. Graceful degrade if no SNI
+    // host is present. `tray_stop` tears it down on shutdown; the tray's Quit
+    // action uses the daemon-wide `shutdown`.
+    let tray_stop = Arc::new(Notify::new());
+    let tray_task = tokio::spawn(tray::run(
+        open_tx,
+        refresh_tx,
+        shutdown.clone(),
+        tray_stop.clone(),
+    ));
 
     // Long-running tasks.
     let server_ctx = ctx.clone();
@@ -126,9 +136,9 @@ async fn main() -> Result<()> {
 
     // Terminate the viewer child, tear down the tray, and clean up the socket.
     viewer_proc::kill(&ctx);
-    if let Some(handle) = tray_handle {
-        handle.shutdown().await;
-    }
+    // Stop the tray supervisor and give it a moment to remove the SNI item.
+    tray_stop.notify_one();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), tray_task).await;
     server_task.abort();
     sched_task.abort();
     open_task.abort();

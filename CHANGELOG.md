@@ -6,6 +6,18 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Fixed
+- The system-tray icon no longer disappears after a package upgrade. On upgrade
+  the daemon re-execs itself (same PID) and re-registers the *same* tray item
+  name it just released, which can race the desktop's StatusNotifierWatcher and
+  drop the icon with no recovery signal — leaving the daemon running but
+  iconless. Recovery stays event-driven (the underlying library re-registers
+  across watcher/shell restarts on its own); a single deferred re-registration
+  check shortly after startup now re-adds the item if that handoff dropped it.
+- The tray icon now ships as embedded ARGB pixmaps with an empty themed name, so
+  hosts that mishandle a themed `IconName` (notably the GNOME AppIndicator
+  extension) render our icon instead of a placeholder.
+
 ## 0.1.4
 
 ### Build & release
