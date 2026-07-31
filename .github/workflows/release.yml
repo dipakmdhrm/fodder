@@ -1,6 +1,9 @@
 name: Release
 
-# Push a version tag to cut a release, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+# Two ways in:
+#   - Push a version tag manually, e.g.:  git tag v0.1.0 && git push origin v0.1.0
+#   - Called by auto-release.yml on merge to main (workflow_call), which passes
+#     the computed version and the freshly-pushed tag as `ref`.
 #
 # One-time setup (see docs/RELEASING.md):
 #   - Secret APT_SIGNING_KEY: an ASCII-armored GPG private key (signs the apt +
@@ -11,27 +14,49 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_call:
+    inputs:
+      version:
+        description: Version to release (no leading "v"). Set on workflow_call.
+        required: true
+        type: string
+      ref:
+        description: >-
+          Git ref to build (the release tag). Ensures the build sees the
+          version-bump commit rather than the merge commit that triggered the
+          caller.
+        required: false
+        type: string
+        default: ''
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Version from the tag
+  # Version from the workflow_call input, or from the tag name on a tag push.
   get-version:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.VERSION }}
     steps:
       - id: v
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
 
   # Build every package via the shared reusable workflow that CI also runs, so
-  # the tag build is identical to what was already validated on the PR.
+  # the tag build is identical to what was already validated on the PR. `ref`
+  # is empty on a tag push (checkout defaults to the tag) and the release tag on
+  # workflow_call (so the build includes the version-bump commit).
   build:
     needs: get-version
     uses: ./.github/workflows/build-packages.yml
     with:
       version: ${{ needs.get-version.outputs.version }}
+      ref: ${{ inputs.ref }}
 
   # Publish auto-update repos (apt + flatpak) to gh-pages
   #
