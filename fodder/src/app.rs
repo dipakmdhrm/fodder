@@ -1197,7 +1197,7 @@ impl App {
         general.set_title("General");
 
         let autostart = adw::SwitchRow::new();
-        autostart.set_title("Start daemon at login");
+        autostart.set_title("Launch at startup");
         autostart.set_subtitle("Installs an autostart entry for the poller");
         autostart.set_active(fodder_core::autostart::is_enabled());
         autostart.connect_active_notify(|row| {
