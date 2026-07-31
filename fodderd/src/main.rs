@@ -31,6 +31,16 @@ use state::{AppCtx, OpenRequest};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // `--version`/`-V` short-circuits before any daemon setup: print the shared
+    // version blurb and exit without starting the poll loop, tray, or socket.
+    if std::env::args()
+        .skip(1)
+        .any(|a| a == "--version" || a == "-V")
+    {
+        println!("{}", fodder_core::version_blurb("fodderd"));
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),

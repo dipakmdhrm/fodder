@@ -43,6 +43,9 @@ fn main() -> glib::ExitCode {
 }
 
 /// Parse `--feed <id>` / `--article <id>` from the command line.
+///
+/// `--version`/`-V` is handled here (before GTK starts) and exits the process:
+/// it prints the shared version blurb instead of opening the viewer window.
 fn parse_args() -> Target {
     let mut target = Target::default();
     let mut args = std::env::args().skip(1);
@@ -51,6 +54,10 @@ fn parse_args() -> Target {
             "--feed" => target.feed = args.next().and_then(|v| v.parse().ok()),
             "--article" => target.article = args.next().and_then(|v| v.parse().ok()),
             "--webkit" => target.webkit = true,
+            "--version" | "-V" => {
+                println!("{}", fodder_core::version_blurb("fodder"));
+                std::process::exit(0);
+            }
             _ => {}
         }
     }

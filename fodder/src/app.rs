@@ -170,13 +170,20 @@ fn assemble(
     let add_btn = icon_button("list-add-symbolic", "Add feed");
     let remove_btn = icon_button("list-remove-symbolic", "Remove selected feed");
     let refresh_btn = icon_button("view-refresh-symbolic", "Refresh all feeds");
-    let prefs_btn = icon_button("preferences-system-symbolic", "Preferences");
+    // The gear now opens a menu (Preferences / About Fodder) rather than the
+    // preferences dialog directly. Its actions live in the `appmenu` group
+    // registered on the window (see `setup_app_menu`).
+    let menu_btn = gtk::MenuButton::builder()
+        .icon_name("preferences-system-symbolic")
+        .tooltip_text("Menu")
+        .menu_model(&build_app_menu())
+        .build();
     let feeds_header = adw::HeaderBar::new();
     feeds_header.set_title_widget(Some(&adw::WindowTitle::new("Feeds", "")));
     feeds_header.pack_start(&add_btn);
     feeds_header.pack_start(&remove_btn);
     feeds_header.pack_end(&refresh_btn);
-    feeds_header.pack_end(&prefs_btn);
+    feeds_header.pack_end(&menu_btn);
     let feeds_pane = adw::ToolbarView::new();
     feeds_pane.add_top_bar(&feeds_header);
     feeds_pane.set_content(Some(&feeds_scroll));
@@ -361,9 +368,9 @@ fn assemble(
         &refresh_btn,
         &mark_all_btn,
         &open_btn,
-        &prefs_btn,
         &webkit_toggle,
     );
+    setup_app_menu(&this);
 
     // In-view navigation buttons.
     let a = this.clone();
@@ -520,6 +527,23 @@ fn build_article_menu(is_read: bool) -> gio::Menu {
     menu
 }
 
+/// The header-bar gear menu: Preferences (the settings dialog) and About Fodder.
+fn build_app_menu() -> gio::Menu {
+    let menu = gio::Menu::new();
+    menu.append(Some("Preferences"), Some("appmenu.preferences"));
+    menu.append(Some("About Fodder"), Some("appmenu.about"));
+    menu
+}
+
+/// Install the gear menu's action group on the window so the `MenuButton`'s
+/// menu model can resolve `appmenu.preferences` / `appmenu.about`.
+fn setup_app_menu(this: &Rc<App>) {
+    let group = gio::SimpleActionGroup::new();
+    add_action(&group, "preferences", this, |app| app.open_settings());
+    add_action(&group, "about", this, |app| app.open_about());
+    this.window.insert_action_group("appmenu", Some(&group));
+}
+
 /// Open a URI in the external browser.
 fn open_uri(window: &adw::ApplicationWindow, uri: &str) {
     let launcher = gtk::UriLauncher::new(uri);
@@ -538,7 +562,6 @@ fn wire_signals(
     refresh_btn: &gtk::Button,
     mark_all_btn: &gtk::Button,
     open_btn: &gtk::Button,
-    prefs_btn: &gtk::Button,
     webkit_toggle: &gtk::ToggleButton,
 ) {
     let a = this.clone();
@@ -583,9 +606,6 @@ fn wire_signals(
 
     let a = this.clone();
     remove_btn.connect_clicked(move |_| a.remove_selected_feed());
-
-    let a = this.clone();
-    prefs_btn.connect_clicked(move |_| a.open_settings());
 
     let a = this.clone();
     webkit_toggle.connect_toggled(move |btn| {
@@ -1310,6 +1330,23 @@ impl App {
         let dialog = adw::PreferencesDialog::new();
         dialog.add(&page);
         dialog.present(Some(&self.window));
+    }
+
+    /// The About dialog: app identity, version, and project links.
+    fn open_about(self: &Rc<Self>) {
+        let about = adw::AboutDialog::builder()
+            .application_name(fodder_core::APP_NAME)
+            .application_icon(fodder_core::APP_ID)
+            .version(fodder_core::VERSION)
+            .comments(fodder_core::APP_DESCRIPTION)
+            .website(fodder_core::REPOSITORY)
+            .issue_url(format!("{}/issues", fodder_core::REPOSITORY))
+            .developer_name("dipakmdhrm")
+            .developers(["dipakmdhrm <dipakmdhrm@gmail.com>"])
+            .license_type(gtk::License::MitX11)
+            .copyright("© 2025 dipakmdhrm")
+            .build();
+        about.present(Some(&self.window));
     }
 
     fn remove_selected_feed(self: &Rc<Self>) {
