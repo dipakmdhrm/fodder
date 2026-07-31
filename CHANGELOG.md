@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.3.0
+
 ### Added
 - The viewer's header-bar gear button now opens a menu with **Preferences**
   (the existing settings dialog) and **About Fodder** (a new About dialog showing
