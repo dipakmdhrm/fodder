@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.1.4
+
 ### Build & release
 - Releases are now cut automatically on merge to `main`. A new `auto-release.yml`
   workflow reads the merged PR's `release:*` label (`release:major` /
