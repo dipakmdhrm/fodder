@@ -24,9 +24,13 @@
 6. **Never merge a PR - merging is always the user's decision and action**, even when CI
    is green and all review comments are addressed. Stop when the PR is ready and report
    its URL.
-7. After the user merges, releases are cut by tagging `main` with `vX.Y.Z` (never from a
-   feature branch); the `release.yml` workflow builds the packages and updates the
-   self-hosted apt/flatpak repos. See `docs/RELEASING.md`.
+7. After the user merges, a release is cut **automatically**: `auto-release.yml`
+   (on push to `main`) reads the merged PR's `release:*` label for the bump size
+   (default patch; `release:skip` opts out), bumps `Cargo.toml`/`Cargo.lock`,
+   stamps `CHANGELOG.md`, tags `vX.Y.Z`, and hands off to `release.yml`. Label the
+   PR `release:minor`/`release:major` when appropriate, or `release:skip` to merge
+   without releasing. A manual `vX.Y.Z` tag push still works for off-cycle
+   releases. See `docs/RELEASING.md`.
 
 **One PR per prompt:** create exactly one pull request per user request, even when the
 work is large. Use multiple commits on the same branch for reviewability instead of
@@ -119,4 +123,4 @@ Per-user install without packaging: `./install.sh` / `./uninstall.sh [--purge]`.
 
 ### Release Process
 
-The four package builds (`.deb`, `.rpm`, an Arch `.pkg.tar.zst`, and Flatpak bundles; x86_64 + arm64, Arch x86_64-only) live in one reusable workflow, `.github/workflows/build-packages.yml`, called by both `ci.yml` and `release.yml`. `release.yml` is triggered by a `v*` tag: it runs that shared build, attaches all packages to a GitHub Release, and publishes GPG-signed **apt** and **flatpak** repositories to the `gh-pages` branch so `.deb` and Flatpak installs auto-update. The Arch build links the **system** SQLite (its PKGBUILD drops rusqlite's `bundled` feature) because makepkg's hardening link flags break the vendored static SQLite. Packaging sources are under `packaging/`; the full process and one-time setup (GPG key secret, GitHub Pages) are documented in `docs/RELEASING.md`.
+The four package builds (`.deb`, `.rpm`, an Arch `.pkg.tar.zst`, and Flatpak bundles; x86_64 + arm64, Arch x86_64-only) live in one reusable workflow, `.github/workflows/build-packages.yml` (parameterized by `version` and an optional `ref` to check out), called by both `ci.yml` and `release.yml`. `release.yml` runs on a `v*` tag **or** `workflow_call`: it runs that shared build, attaches all packages to a GitHub Release, and publishes GPG-signed **apt** and **flatpak** repositories to the `gh-pages` branch so `.deb` and Flatpak installs auto-update. Releases are cut **automatically on merge to `main`** by `.github/workflows/auto-release.yml`: it derives the next version from the newest tag and the merged PR's `release:*` label, bumps `Cargo.toml`/`Cargo.lock`, stamps `CHANGELOG.md`, commits + tags, and invokes `release.yml` (via `workflow_call`, pointed at the new tag). There is no release loop because it pushes with `GITHUB_TOKEN` (whose pushes don't retrigger workflows) and reaches `release.yml` through `workflow_call` rather than the token-pushed tag. The Arch build links the **system** SQLite (its PKGBUILD drops rusqlite's `bundled` feature) because makepkg's hardening link flags break the vendored static SQLite. Packaging sources are under `packaging/`; the full process and one-time setup (GPG key secret, GitHub Pages, release labels) are documented in `docs/RELEASING.md`.

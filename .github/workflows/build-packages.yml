@@ -13,6 +13,15 @@ on:
         description: Version string embedded in the package filenames/metadata.
         required: true
         type: string
+      ref:
+        description: >-
+          Git ref (tag/branch/SHA) to build. Leave empty to build the ref that
+          triggered the caller (the PR head on CI, the tag on a tag-push
+          release). The auto-release flow passes the freshly-pushed tag so the
+          build picks up the version-bump commit.
+        required: false
+        type: string
+        default: ''
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,6 +39,8 @@ jobs:
       VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Install build + runtime deps
         run: |
@@ -88,6 +99,8 @@ jobs:
             gtk4-devel libadwaita-devel webkitgtk6.0-devel
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       # Cache the expensive dependency builds (gtk4-sys, webkit6-sys, ring,
       # bundled SQLite, ...) so only the workspace crates recompile. This is
@@ -139,6 +152,8 @@ jobs:
             gtk4 libadwaita webkitgtk-6.0
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Build pacman package
         run: |
@@ -172,6 +187,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       # flatpak-builder validates its cache by source checksum, so this safely
       # skips rebuilding unchanged modules (big win when re-running the same

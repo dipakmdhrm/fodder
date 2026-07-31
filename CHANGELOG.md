@@ -6,6 +6,16 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Build & release
+- Releases are now cut automatically on merge to `main`. A new `auto-release.yml`
+  workflow reads the merged PR's `release:*` label (`release:major` /
+  `release:minor`, default patch, `release:skip` to opt out), computes the next
+  version from the newest tag, bumps `Cargo.toml` + `Cargo.lock`, stamps
+  `CHANGELOG.md`, commits and tags, then hands off to the `release.yml` pipeline
+  (now `workflow_call`-able) to build and publish. The bump commit and tag are
+  pushed with `GITHUB_TOKEN`, whose pushes don't retrigger workflows, so there's
+  no release loop. Pushing a `vX.Y.Z` tag by hand still works as before.
+
 ### Changed
 - The daemon now survives package upgrades gracefully: when the installed
   `fodderd` binary is replaced (`apt upgrade`, `dnf upgrade`, `pacman -Syu`),
