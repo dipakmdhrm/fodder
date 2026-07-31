@@ -12,7 +12,10 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
   `release:minor`, default patch, `release:skip` to opt out), computes the next
   version from the newest tag, bumps `Cargo.toml` + `Cargo.lock`, stamps
   `CHANGELOG.md`, commits and tags, then hands off to the `release.yml` pipeline
-  (now `workflow_call`-able) to build and publish. The bump commit and tag are
+  (now `workflow_call`-able) to build and publish. Tooling/docs-only merges
+  (changing only `.github/`, `docs/`, `*.md`, or root scripts) are skipped —
+  a release is cut only when the app crates, assets, packaging, or dependencies
+  change, unless a `release:*` bump label forces one. The bump commit and tag are
   pushed with `GITHUB_TOKEN`, whose pushes don't retrigger workflows, so there's
   no release loop. Pushing a `vX.Y.Z` tag by hand still works as before.
 

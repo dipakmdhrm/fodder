@@ -52,14 +52,20 @@ feature PR is the only gate. The `auto-release.yml` workflow:
    - `release:minor` → `X.Y+1.0`
    - *(no label)* → `X.Y.Z+1` (patch, the default)
    - `release:skip` → no release for this merge
-2. Computes the next version from the newest `v*` tag.
-3. Bumps `[workspace.package] version` in `Cargo.toml`, syncs `Cargo.lock`
+2. **Skips tooling/docs-only merges.** A release is cut only when the merge
+   touches user-facing code — the app crates (`core/`, `fodderd/`, `fodder/`),
+   assets (`data/`), packaging (`packaging/`), or dependencies (`Cargo.toml` /
+   `Cargo.lock`). A merge that changes only `.github/`, `docs/`, `*.md`, or
+   root scripts ships nothing, so it doesn't bump the version. An explicit
+   `release:major`/`release:minor` label forces a release anyway.
+3. Computes the next version from the newest `v*` tag.
+4. Bumps `[workspace.package] version` in `Cargo.toml`, syncs `Cargo.lock`
    (`cargo update --workspace`, workspace members only), and stamps
    `CHANGELOG.md` (moves `## Unreleased` to the new version, leaving a fresh
    empty `## Unreleased`).
-4. Commits `Release vX.Y.Z [skip ci]` to `main` and pushes an annotated
+5. Commits `Release vX.Y.Z [skip ci]` to `main` and pushes an annotated
    `vX.Y.Z` tag.
-5. Invokes `release.yml` (via `workflow_call`, pointed at the new tag) to build
+6. Invokes `release.yml` (via `workflow_call`, pointed at the new tag) to build
    and publish exactly as a manual tag push would.
 
 **No release loop.** The bump commit and the tag are pushed with the default

@@ -29,10 +29,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 7. After the user merges, a release is cut **automatically**: `auto-release.yml`
    (on push to `main`) reads the merged PR's `release:*` label for the bump size
    (default patch; `release:skip` opts out), bumps `Cargo.toml`/`Cargo.lock`,
-   stamps `CHANGELOG.md`, tags `vX.Y.Z`, and hands off to `release.yml`. So label
-   the PR `release:minor`/`release:major` when appropriate, or `release:skip` to
-   merge without releasing. A manual `vX.Y.Z` tag push still works for off-cycle
-   releases. See `docs/RELEASING.md`.
+   stamps `CHANGELOG.md`, tags `vX.Y.Z`, and hands off to `release.yml`. It
+   **skips tooling/docs-only merges** — a release fires only when the app crates
+   (`core/`/`fodderd/`/`fodder/`), assets (`data/`), packaging, or deps
+   (`Cargo.toml`/`Cargo.lock`) change; a merge touching only `.github/`, `docs/`,
+   `*.md`, or root scripts ships nothing and is skipped (a `release:*` bump label
+   forces a release anyway). So label the PR `release:minor`/`release:major` when
+   appropriate, or `release:skip` to merge without releasing. A manual `vX.Y.Z`
+   tag push still works for off-cycle releases. See `docs/RELEASING.md`.
 
 **One PR per prompt:** create exactly one pull request per user request, even when the
 work is large. Use multiple commits on the same branch for reviewability instead of
