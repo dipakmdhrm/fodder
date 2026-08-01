@@ -10,10 +10,11 @@
 #     CARGO_NET_OFFLINE=true.
 #   * Sources are pinned to a git tag + commit, not a local dir.
 #
-# BEFORE SUBMITTING: set `tag`/`commit` below to the release that CONTAINS the
-# metainfo file (data/metainfo/...) and this manifest — i.e. the tag cut AFTER
-# this branch merges to main. v0.3.1 predates the metainfo file and will not
-# build. Update cargo-sources.json too if dependencies changed since.
+# Pinned to a released tag + commit that contains the metainfo and this manifest.
+# This copy is the reference used for the INITIAL Flathub submission; after the
+# app is live, flathub-publish.yml updates the manifest in the Flathub repo on
+# every release (repoints tag/commit, regenerates cargo-sources.json), so this
+# in-repo copy may lag later releases — that's expected.
 app-id: io.github.dipakmdhrm.Fodder
 runtime: org.gnome.Platform
 runtime-version: '50'
@@ -68,8 +69,6 @@ modules:
     sources:
       - type: git
         url: https://github.com/dipakmdhrm/fodder.git
-        # TODO(before submit): point at the release tag that includes the
-        # metainfo file, and set its full commit sha.
         tag: v0.4.0
-        commit: '0000000000000000000000000000000000000000'
+        commit: '89e892b81ad3f837280bdc3e540f5919378cb55d'
       - cargo-sources.json
