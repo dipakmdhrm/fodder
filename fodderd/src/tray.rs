@@ -1,26 +1,23 @@
 //! StatusNotifierItem system-tray icon via `ksni`.
 //!
-//! Registration is best-effort: on desktops without an SNI host (e.g. vanilla
-//! GNOME Shell) `spawn` fails, and we degrade gracefully — the daemon keeps
-//! polling and notifying, and the viewer can still be opened via a notification
-//! click or by re-running `fodder`.
+//! Kept deliberately simple by tying the tray to the *session* lifecycle instead
+//! of trying to keep it alive across sessions:
 //!
-//! **Recovery is event-driven**, like well-behaved SNI apps: `ksni` re-registers
-//! the item whenever the tray watcher (`org.kde.StatusNotifierWatcher`) restarts
-//! on the same bus, so a shell/watcher restart doesn't lose the icon. We do NOT
-//! poll.
+//! - We register with `disable_dbus_name(true)`, so the item uses `ksni`'s unique
+//!   D-Bus connection name rather than a well-known `org.kde.StatusNotifierItem-…`
+//!   name. That works inside Flatpak (which can't own that name) and means a
+//!   restarted daemon never collides with a previous registration.
+//! - `assume_sni_available(true)` lets us autostart *before* the desktop's tray
+//!   host is up: `ksni` keeps the item and registers once the watcher appears.
+//! - When the D-Bus *session* connection dies — which is what a logout does — the
+//!   daemon shuts down (see [`wait_for_session_end`], wired up in `main`), so the
+//!   next login's autostart brings up a fresh daemon on a fresh connection with a
+//!   working tray. No in-daemon re-registration/reconnection logic needed.
 //!
-//! The one wrinkle unique to fodder is `self_update`: on a package upgrade the
-//! daemon re-execs itself (same PID), which releases and then immediately
-//! re-requests the *same* well-known name `org.kde.StatusNotifierItem-<pid>-1`.
-//! That handoff can race the watcher's prune-on-owner-vanished and drop us with
-//! no further signal. So [`run`] does a single **deferred re-registration check**
-//! shortly after startup: if our still-owned item isn't in the watcher's list,
-//! re-register it once (a plain `RegisterStatusNotifierItem`, no tear-down). This
-//! is a bounded one-shot, not a periodic poll.
+//! Registration is still best-effort: on a host with no SNI tray the daemon keeps
+//! polling and notifying, and the viewer opens via a notification or `fodder`.
 
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 
 use ksni::menu::{MenuItem, StandardItem};
 use ksni::{Handle, Icon, Tray, TrayMethods};
@@ -31,13 +28,6 @@ use crate::state::OpenRequest;
 
 use fodder_core::APP_ID;
 
-/// The well-known name the SNI host claims.
-const WATCHER_NAME: &str = "org.kde.StatusNotifierWatcher";
-
-/// Delay after spawning before the one-shot re-registration check, long enough
-/// for a `self_update` re-exec handoff to have settled at the watcher.
-const STARTUP_RECONCILE_DELAY: Duration = Duration::from_secs(5);
-
 /// The tray model. Holds only cloneable senders so menu callbacks can hand work
 /// off to the daemon without blocking the menu.
 pub struct FodderTray {
@@ -46,21 +36,6 @@ pub struct FodderTray {
     shutdown: Arc<Notify>,
     /// Embedded app icon as ARGB pixmaps; empty if decoding failed.
     icons: Vec<Icon>,
-}
-
-impl FodderTray {
-    fn new(
-        open_tx: UnboundedSender<OpenRequest>,
-        refresh_tx: UnboundedSender<Option<i64>>,
-        shutdown: Arc<Notify>,
-    ) -> Self {
-        Self {
-            open_tx,
-            refresh_tx,
-            shutdown,
-            icons: app_icons(),
-        }
-    }
 }
 
 impl Tray for FodderTray {
@@ -73,11 +48,10 @@ impl Tray for FodderTray {
     }
 
     fn icon_name(&self) -> String {
-        // Prefer our embedded ARGB pixmaps (see `icon_pixmap`); only fall back
-        // to the themed name if decoding them failed. Several SNI hosts (notably
-        // the GNOME AppIndicator extension) prefer IconName and, when it doesn't
-        // resolve in the icon theme, show a placeholder instead of the pixmap —
-        // so we deliberately send an empty name when we have pixmaps.
+        // Prefer our embedded ARGB pixmaps; only fall back to the themed name if
+        // decoding failed. Several hosts (notably the GNOME AppIndicator
+        // extension) prefer IconName and show a placeholder when it doesn't
+        // resolve in the theme, so we send an empty name when we have pixmaps.
         if self.icons.is_empty() {
             APP_ID.to_string()
         } else {
@@ -128,50 +102,26 @@ impl Tray for FodderTray {
     }
 }
 
-/// Run the tray for the daemon's lifetime: spawn it, do a one-shot deferred
-/// re-registration check (to neutralize the `self_update` re-exec handoff race),
-/// then idle until `stop` is notified and tear the tray down. Ongoing recovery
-/// across watcher restarts is `ksni`'s job — no polling here.
-///
-/// `quit` is the daemon-wide shutdown handle handed to the tray's Quit action;
-/// `stop` is how `main` tells this task to exit.
-pub async fn run(
+/// Register the tray. Returns the handle (keep it alive for the daemon's
+/// lifetime, and `shutdown()` it on exit), or `None` if the D-Bus connection
+/// couldn't be established.
+pub async fn spawn(
     open_tx: UnboundedSender<OpenRequest>,
     refresh_tx: UnboundedSender<Option<i64>>,
-    quit: Arc<Notify>,
-    stop: Arc<Notify>,
-) {
-    let handle = spawn(&open_tx, &refresh_tx, &quit).await;
-    let has_tray = handle.is_some();
-
-    // The one-shot reconcile, then idle forever (cancelled by `stop` below).
-    let reconcile = async {
-        if has_tray {
-            tokio::time::sleep(STARTUP_RECONCILE_DELAY).await;
-            reconcile_registration(std::process::id()).await;
-        }
-        std::future::pending::<()>().await;
-    };
-
-    tokio::select! {
-        _ = stop.notified() => {}
-        _ = reconcile => {}
-    }
-
-    if let Some(h) = handle {
-        let _ = tokio::time::timeout(Duration::from_secs(2), h.shutdown()).await;
-    }
-}
-
-/// Try to register the tray once. Returns the handle on success, or `None` if no
-/// SNI host is available.
-async fn spawn(
-    open_tx: &UnboundedSender<OpenRequest>,
-    refresh_tx: &UnboundedSender<Option<i64>>,
-    quit: &Arc<Notify>,
+    shutdown: Arc<Notify>,
 ) -> Option<Handle<FodderTray>> {
-    let tray = FodderTray::new(open_tx.clone(), refresh_tx.clone(), quit.clone());
-    match tray.spawn().await {
+    let tray = FodderTray {
+        open_tx,
+        refresh_tx,
+        shutdown,
+        icons: app_icons(),
+    };
+    match tray
+        .disable_dbus_name(true)
+        .assume_sni_available(true)
+        .spawn()
+        .await
+    {
         Ok(handle) => {
             tracing::info!("system tray registered");
             Some(handle)
@@ -186,95 +136,15 @@ async fn spawn(
     }
 }
 
-#[zbus::proxy(
-    interface = "org.kde.StatusNotifierWatcher",
-    default_service = "org.kde.StatusNotifierWatcher",
-    default_path = "/StatusNotifierWatcher"
-)]
-trait StatusNotifierWatcher {
-    fn register_status_notifier_item(&self, service: &str) -> zbus::Result<()>;
-
-    #[zbus(property)]
-    fn registered_status_notifier_items(&self) -> zbus::Result<Vec<String>>;
-}
-
-/// One-shot: if a watcher is up and our still-owned tray item isn't in its
-/// registered list, re-register it once. This recovers from the re-exec handoff
-/// race (old process released the same name we re-registered, and the watcher
-/// pruned it). `ksni` still owns the name, so we just re-add it — no tear-down,
-/// no fresh release/re-request, so no new race.
-async fn reconcile_registration(our_pid: u32) {
-    let Ok(conn) = zbus::Connection::session().await else {
-        return;
-    };
-    let Ok(dbus) = zbus::fdo::DBusProxy::new(&conn).await else {
-        return;
-    };
-    // No SNI host present → nothing to register against.
-    let Ok(watcher_bus) = zbus::names::BusName::try_from(WATCHER_NAME) else {
-        return;
-    };
-    if !dbus.name_has_owner(watcher_bus).await.unwrap_or(false) {
-        return;
+/// Resolve when the D-Bus *session* connection ends — which is what happens on
+/// logout (the socket is severed). `main` uses this as a shutdown trigger so the
+/// daemon exits with the session and the next login starts a fresh one. If there
+/// is no session bus at all (headless), never resolves.
+pub async fn wait_for_session_end() {
+    match zbus::Connection::session().await {
+        Ok(conn) => conn.closed().await,
+        Err(_) => std::future::pending().await,
     }
-    let Ok(watcher) = StatusNotifierWatcherProxy::new(&conn).await else {
-        return;
-    };
-    // The well-known name `ksni` registered for us (it embeds our PID).
-    let Some(our_name) = our_item_name(&dbus, our_pid).await else {
-        return; // ksni didn't register a well-known name; nothing to re-add.
-    };
-    let Ok(items) = watcher.registered_status_notifier_items().await else {
-        return;
-    };
-    if items_include_pid(&dbus, &items, our_pid).await {
-        return; // already registered — the common case; do nothing.
-    }
-    tracing::warn!(
-        "tray item {our_name} missing from the watcher after startup \
-         (likely a self_update re-exec handoff); re-registering"
-    );
-    if let Err(e) = watcher.register_status_notifier_item(&our_name).await {
-        tracing::warn!("re-register failed: {e}");
-    }
-}
-
-/// The `org.kde.StatusNotifierItem-<pid>-<n>` well-known name we own (its PID
-/// segment is ours), or `None` if we don't own one.
-async fn our_item_name(dbus: &zbus::fdo::DBusProxy<'_>, our_pid: u32) -> Option<String> {
-    let prefix = format!("org.kde.StatusNotifierItem-{our_pid}-");
-    let names = dbus.list_names().await.ok()?;
-    names
-        .into_iter()
-        .find(|n| n.as_str().starts_with(&prefix))
-        .map(|n| n.as_str().to_string())
-}
-
-/// Whether any of the watcher's registered entries is owned by our PID.
-/// Host-agnostic: each entry is a bus name, optionally `@<objectpath>`-suffixed
-/// (well-known on GNOME, unique on KDE); we resolve each to its owner PID.
-async fn items_include_pid(
-    dbus: &zbus::fdo::DBusProxy<'_>,
-    items: &[String],
-    our_pid: u32,
-) -> bool {
-    for entry in items {
-        let Ok(name) = zbus::names::BusName::try_from(bus_name_of(entry)) else {
-            continue;
-        };
-        if let Ok(pid) = dbus.get_connection_unix_process_id(name).await {
-            if pid == our_pid {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Strip the optional `@<objectpath>` suffix from a registered-item entry,
-/// leaving just the bus name.
-fn bus_name_of(entry: &str) -> &str {
-    entry.split('@').next().unwrap_or(entry)
 }
 
 // --- icon embedding --------------------------------------------------------
@@ -344,17 +214,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bus_name_of_strips_object_path() {
-        assert_eq!(bus_name_of(":1.23@/org/foo"), ":1.23");
-        assert_eq!(
-            bus_name_of("org.kde.StatusNotifierItem-813993-1"),
-            "org.kde.StatusNotifierItem-813993-1"
-        );
-    }
-
-    #[test]
     fn rgba_to_argb_reorders_channels() {
-        // one opaque red pixel [R,G,B,A] -> [A,R,G,B]
+        // one opaque pixel [R,G,B,A] -> [A,R,G,B]
         assert_eq!(
             rgba_to_argb(&[0x11, 0x22, 0x33, 0xff]),
             vec![0xff, 0x11, 0x22, 0x33]

@@ -6,6 +6,16 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Fixed
+- The system-tray icon no longer disappears after logging out and back in. The
+  daemon was surviving logout with a dead D-Bus connection (so the tray couldn't
+  recover). It now exits when the session bus goes away, and the next login's
+  autostart brings up a fresh daemon with a working tray. The tray also registers
+  under its unique D-Bus connection name (fixing the Flatpak build, which can't
+  own the previous well-known name) and tolerates starting before the desktop's
+  tray host is ready. This replaces the more complex in-daemon recovery paths
+  with a simpler session-scoped lifecycle.
+
 ## 0.3.0
 
 ### Added
