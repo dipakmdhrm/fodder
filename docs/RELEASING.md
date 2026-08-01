@@ -42,6 +42,18 @@ works too, for manual/backfill releases.
    Missing labels are tolerated (an unlabeled merge is a patch release); the
    labels just let you request minor/major or opt out.
 
+5. **Flathub auto-publish** *(only after the app is accepted on Flathub)*. Once
+   Flathub has created the `flathub/io.github.dipakmdhrm.Fodder` repo, wire up
+   automatic update PRs (see [Flathub auto-publish](#flathub-auto-publish)):
+   - Create a **fine-grained PAT** with *Contents: write* + *Pull requests:
+     write*, scoped to just that one Flathub repo, and add it as the repo secret
+     **`FLATHUB_TOKEN`**.
+   - Set the repo **variable** `FLATHUB_AUTOPUBLISH` = `true` (Settings → Secrets
+     and variables → Actions → *Variables*). This is the on-switch; until it's
+     `true`, the publisher never runs.
+   - In the Flathub repo's settings, enable **Allow auto-merge** so the opened PR
+     lands itself once Flathub's Buildbot check is green.
+
 ## Automatic releases
 
 Merging a PR to `main` cuts a release with no further action — merging the
@@ -78,6 +90,34 @@ So `Cargo.toml`/`Cargo.lock` on `main` always reflect the latest release, and a
 local `cargo build` reports the right version. Curate `CHANGELOG.md` under
 `## Unreleased` as part of normal PR work; the release stamps it for you.
 
+## Flathub auto-publish
+
+Once configured (setup step 5), every release also proposes a matching update to
+the app's Flathub repo — no manual manifest bump. The `flathub-publish.yml`
+reusable workflow, invoked by `release.yml` (so it fires for **both**
+auto-releases and manual tag pushes), does:
+
+1. Checks out the app repo at the release tag and resolves its commit sha.
+2. Regenerates `cargo-sources.json` from the tagged `Cargo.lock` (crates may have
+   changed since the last release).
+3. Clones `flathub/io.github.dipakmdhrm.Fodder`, repoints the manifest's git
+   source at the new `tag` + `commit` (targeted `sed`, so the PR diff is just
+   those two lines plus the vendored sources), and copies the regenerated
+   `cargo-sources.json` in.
+4. Pushes an `update-vX.Y.Z` branch and opens a PR to the Flathub repo, then
+   enables auto-merge so Flathub's **Buildbot** test-builds it and lands it on
+   green.
+
+It is **dormant by default**: `release.yml` only calls it when the repo variable
+`FLATHUB_AUTOPUBLISH == 'true'`, and the workflow additionally no-ops if the
+`FLATHUB_TOKEN` secret is missing. You can trigger it by hand for a re-run via
+the Actions tab (**Flathub Publish** → *Run workflow* → enter the version).
+
+> Note: this path can't be exercised until the Flathub repo exists, so treat the
+> first real run as something to watch. If auto-merge isn't enabled on the
+> Flathub repo, the workflow still opens the PR — just merge it manually once
+> Buildbot is green.
+
 ## Cutting a release manually
 
 You rarely need this (merges auto-release), but a hand-pushed tag still works —
@@ -100,9 +140,10 @@ e.g. to re-cut a build or release off-cycle:
   `cargo test` on every PR.
 - **Arch** is x86_64-only (Arch Linux's official architecture). `.deb`, `.rpm`,
   and Flatpak are dual-arch.
-- The **Flatpak** build fetches crates over the network (fine for a self-hosted
-  repo). A future Flathub submission would instead vendor crates via a generated
-  `cargo-sources.json`.
+- The self-hosted **Flatpak** build (`packaging/flatpak/`) fetches crates over
+  the network. The **Flathub** build (`packaging/flatpak/flathub/`) instead
+  builds fully offline from a vendored `cargo-sources.json`; releases keep it
+  current automatically via [Flathub auto-publish](#flathub-auto-publish).
 - The multi-arch CI (reprepro apt repo, ostree flatpak repo, GPG in Actions,
   arm64 runners) can't be validated locally — expect to iterate on the first
   real run. The GitHub Release job is independent of the repo-publishing job, so
