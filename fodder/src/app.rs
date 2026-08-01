@@ -1218,10 +1218,19 @@ impl App {
 
         let autostart = adw::SwitchRow::new();
         autostart.set_title("Launch at startup");
-        autostart.set_subtitle("Installs an autostart entry for the poller");
+        autostart.set_subtitle("Starts the feed poller when you log in");
         autostart.set_active(fodder_core::autostart::is_enabled());
-        autostart.connect_active_notify(|row| {
-            if let Err(e) = fodder_core::autostart::set_enabled(row.is_active()) {
+        let app = self.clone();
+        autostart.connect_active_notify(move |row| {
+            // Inside a Flatpak sandbox the autostart entry must go through the
+            // Background portal, which the daemon owns; route the toggle to it.
+            // Natively we can flip the `~/.config/autostart` file in-process
+            // (also works when the viewer runs standalone with no daemon).
+            if fodder_core::autostart::is_flatpak() {
+                let _ = app.cmd_tx.send(IpcMessage::SetAutostart {
+                    enabled: row.is_active(),
+                });
+            } else if let Err(e) = fodder_core::autostart::set_enabled(row.is_active()) {
                 tracing::warn!("autostart toggle failed: {e}");
             }
         });

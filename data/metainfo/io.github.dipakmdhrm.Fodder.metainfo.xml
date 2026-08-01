@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.dipakmdhrm.Fodder</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Fodder</name>
+  <summary>Lightweight RSS, Atom and JSON feed reader</summary>
+
+  <description>
+    <p>
+      Fodder is a lightweight RSS/Atom/JSON-Feed reader for Linux desktops. A
+      resident background service polls your feeds, shows desktop notifications
+      for new articles, and lives in the system tray; a fast three-pane reader
+      opens on demand and frees its memory when closed.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>RSS, Atom and JSON Feed support with automatic feed discovery</li>
+      <li>Efficient conditional polling that respects ETag and Last-Modified</li>
+      <li>Desktop notifications for new articles and an optional daily reading reminder</li>
+      <li>A clean, distraction-free built-in reader plus an optional full web view</li>
+      <li>Per-feed unread counts and mark-as-read on open</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.dipakmdhrm.Fodder.desktop</launchable>
+
+  <url type="homepage">https://github.com/dipakmdhrm/fodder</url>
+  <url type="bugtracker">https://github.com/dipakmdhrm/fodder/issues</url>
+  <url type="vcs-browser">https://github.com/dipakmdhrm/fodder</url>
+
+  <developer id="io.github.dipakmdhrm">
+    <name>Dipak Yadav</name>
+  </developer>
+
+  <content_rating type="oars-1.1" />
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The three-pane reader showing feeds, articles and the reader pane</caption>
+      <image>https://raw.githubusercontent.com/dipakmdhrm/fodder/main/data/screenshots/reader.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.3.1" date="2026-08-01"/>
+  </releases>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#ffd4bd</color>
+    <color type="primary" scheme_preference="dark">#5c2a10</color>
+  </branding>
+</component>

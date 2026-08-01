@@ -112,6 +112,9 @@ async fn handle_msg(
             ctx.reload_config();
             let _ = out_tx.send(IpcMessage::Ack);
         }
+        IpcMessage::SetAutostart { enabled } => {
+            let _ = out_tx.send(set_autostart(enabled).await);
+        }
         IpcMessage::ReadingState {
             feed_id,
             article_id,
@@ -145,6 +148,51 @@ async fn handle_msg(
         }
     }
     false
+}
+
+/// Toggle launch-at-login. Under Flatpak this drives the XDG Background portal
+/// and records the intent in the marker file; natively it writes/removes the
+/// `~/.config/autostart` entry (off the async runtime, since it touches disk).
+async fn set_autostart(enabled: bool) -> IpcMessage {
+    use fodder_core::autostart;
+
+    if autostart::is_flatpak() {
+        match crate::portal::request_autostart(enabled, autostart::portal_autostart_command()).await
+        {
+            Ok(true) => {
+                if let Err(e) = autostart::set_flatpak_marker(enabled) {
+                    tracing::warn!("autostart marker update failed: {e}");
+                }
+                tracing::info!("autostart {} via Background portal", on_off(enabled));
+                IpcMessage::Ack
+            }
+            Ok(false) => {
+                tracing::warn!("Background portal denied the autostart request");
+                IpcMessage::Error("the desktop denied the autostart request".into())
+            }
+            Err(e) => {
+                tracing::warn!("Background portal request failed: {e}");
+                IpcMessage::Error(format!("autostart request failed: {e}"))
+            }
+        }
+    } else {
+        match tokio::task::spawn_blocking(move || autostart::set_enabled(enabled)).await {
+            Ok(Ok(())) => {
+                tracing::info!("autostart {}", on_off(enabled));
+                IpcMessage::Ack
+            }
+            Ok(Err(e)) => IpcMessage::Error(format!("autostart update failed: {e}")),
+            Err(e) => IpcMessage::Error(format!("autostart task panicked: {e}")),
+        }
+    }
+}
+
+fn on_off(enabled: bool) -> &'static str {
+    if enabled {
+        "enabled"
+    } else {
+        "disabled"
+    }
 }
 
 /// Insert a resolved subscription, trigger an immediate poll, and tell the
