@@ -1,0 +1,149 @@
+name: Flathub Publish
+
+# Propose a Flathub update for a freshly-released tag: regenerate the vendored
+# crate sources, repoint the manifest at the new tag+commit, and open a PR
+# against the Flathub app repo (Buildbot then test-builds it; auto-merge lands
+# it on green).
+#
+# WHY workflow_call (not `on: push: tags`): auto-release.yml pushes the tag with
+# GITHUB_TOKEN, and token-pushed tags don't trigger workflows. release.yml runs
+# on both a manual tag push AND that workflow_call, so it invokes this workflow
+# and we inherit whichever path fired. `workflow_dispatch` is here for manual
+# re-runs / first tests.
+#
+# DORMANT UNTIL CONFIGURED. The caller (release.yml) only invokes this when the
+# repo variable FLATHUB_AUTOPUBLISH == 'true', and the job below no-ops unless
+# the FLATHUB_TOKEN secret is present. One-time setup once the app is accepted
+# on Flathub (see docs/RELEASING.md):
+#   1. Create a fine-grained PAT with Contents + Pull requests: write, scoped to
+#      the flathub/io.github.dipakmdhrm.Fodder repo -> secret FLATHUB_TOKEN.
+#   2. Set repo variable FLATHUB_AUTOPUBLISH = true.
+#   3. In the Flathub repo settings enable "Allow auto-merge" (and make the
+#      Buildbot check required) so the opened PR merges itself on a green build.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version being released (no leading "v"), e.g. 0.4.0.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish to Flathub (no leading "v"), e.g. 0.4.0.
+        required: true
+        type: string
+
+# Serialize so two releases can't open racing update PRs.
+concurrency:
+  group: flathub-publish
+  cancel-in-progress: false
+
+env:
+  # The dedicated Flathub app repo and the manifest filename within it. Created
+  # by Flathub when the app is accepted; these are stable thereafter.
+  FLATHUB_REPO: flathub/io.github.dipakmdhrm.Fodder
+  MANIFEST: io.github.dipakmdhrm.Fodder.yml
+  APP_REPO_URL: https://github.com/dipakmdhrm/fodder.git
+  # Pinned only-if-needed; default branch is fine for this single-file tool.
+  GENERATOR_REPO: https://github.com/flatpak/flatpak-builder-tools.git
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check configuration
+        id: guard
+        env:
+          FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLATHUB_TOKEN:-}" ]; then
+            echo "FLATHUB_TOKEN not set — Flathub publish not configured yet; skipping."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the app repo at the release tag
+        if: steps.guard.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: Resolve the tag's commit sha
+        if: steps.guard.outputs.enabled == 'true'
+        id: rev
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.guard.outputs.enabled == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Regenerate cargo-sources.json (offline vendor set)
+        if: steps.guard.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          pip install --quiet aiohttp toml tomlkit
+          git clone --depth 1 "$GENERATOR_REPO" /tmp/fbt
+          python /tmp/fbt/cargo/flatpak-cargo-generator.py ./Cargo.lock -o /tmp/cargo-sources.json
+          echo "Generated $(python -c 'import json;print(len(json.load(open("/tmp/cargo-sources.json"))))') source entries."
+
+      - name: Clone the Flathub app repo
+        if: steps.guard.outputs.enabled == 'true'
+        env:
+          FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${FLATHUB_TOKEN}@github.com/${FLATHUB_REPO}.git" flathub
+          echo "BASE_BRANCH=$(git -C flathub rev-parse --abbrev-ref HEAD)" >> "$GITHUB_ENV"
+
+      - name: Update the manifest and vendored sources
+        if: steps.guard.outputs.enabled == 'true'
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ steps.rev.outputs.sha }}
+        run: |
+          set -euo pipefail
+          cd flathub
+          cp /tmp/cargo-sources.json cargo-sources.json
+          # Repoint the git source at the new tag+commit. Targeted sed keeps the
+          # PR diff minimal (only these two lines change); the manifest has a
+          # single `tag:`/`commit:` pair (the git source), so this is unambiguous.
+          sed -i -E "s|^([[:space:]]*)tag:[[:space:]].*|\1tag: v${VERSION}|" "$MANIFEST"
+          sed -i -E "s|^([[:space:]]*)commit:[[:space:]].*|\1commit: '${SHA}'|" "$MANIFEST"
+          echo "----- updated git source -----"
+          grep -nE "^[[:space:]]*(tag|commit):" "$MANIFEST"
+
+      - name: Open (or update) the Flathub PR
+        if: steps.guard.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cd flathub
+          BRANCH="update-v${VERSION}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          if git diff --quiet; then
+            echo "No manifest/source changes for v${VERSION}; nothing to publish."
+            exit 0
+          fi
+          git commit -am "Update to v${VERSION}"
+          git push -f origin "$BRANCH"
+          # Create the PR if one doesn't already exist for this branch.
+          if ! gh pr view "$BRANCH" --repo "$FLATHUB_REPO" >/dev/null 2>&1; then
+            gh pr create --repo "$FLATHUB_REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
+              --title "Update to v${VERSION}" \
+              --body "Automated update to v${VERSION}. Manifest repointed to the release tag+commit and cargo-sources.json regenerated from Cargo.lock."
+          fi
+          # Land it on a green Buildbot build. Requires "Allow auto-merge" enabled
+          # in the Flathub repo; otherwise merge manually after the build passes.
+          gh pr merge "$BRANCH" --repo "$FLATHUB_REPO" --auto --squash \
+            || echo "::warning::auto-merge not enabled on ${FLATHUB_REPO}; merge the PR manually once Buildbot is green."

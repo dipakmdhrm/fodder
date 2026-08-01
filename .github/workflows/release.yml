@@ -193,6 +193,20 @@ jobs:
           git commit -m "Release v${VERSION}" || echo "nothing to commit"
           git push origin gh-pages
 
+  # Propose the matching Flathub update (regenerate vendored crates, repoint the
+  # manifest at this tag+commit, open a PR to the Flathub app repo). Runs on both
+  # a manual tag push and the auto-release workflow_call, since release.yml is the
+  # shared entry point for both. Dormant until opted in: gated on the repo
+  # variable FLATHUB_AUTOPUBLISH, and the called workflow additionally no-ops
+  # without the FLATHUB_TOKEN secret. See docs/RELEASING.md.
+  flathub:
+    needs: get-version
+    if: ${{ vars.FLATHUB_AUTOPUBLISH == 'true' }}
+    uses: ./.github/workflows/flathub-publish.yml
+    with:
+      version: ${{ needs.get-version.outputs.version }}
+    secrets: inherit
+
   # GitHub Release with all artifacts
   release:
     needs: [get-version, build]
