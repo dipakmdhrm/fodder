@@ -9,10 +9,12 @@
 //! - On Flatpak we register with `disable_dbus_name(true)` (unique connection
 //!   name, since the sandbox can't own the well-known `org.kde.StatusNotifierItem-…`
 //!   name); native installs keep the spec-recommended well-known name.
-//! - When the D-Bus *session bus* goes away — which is what a logout does — the
-//!   daemon shuts down (see [`wait_for_session_bus_loss`], wired up in `main`), so
-//!   the next login's autostart brings up a fresh daemon on a fresh connection
-//!   with a working tray. No in-daemon re-registration/reconnection logic needed.
+//! - When a logout *tears down* the D-Bus session bus, the daemon shuts down (see
+//!   [`wait_for_session_bus_loss`], wired up in `main`), so the next login's
+//!   autostart brings up a fresh daemon on a fresh connection with a working tray.
+//!   Where the session bus instead *persists* across logout, the daemon keeps
+//!   running and `ksni` re-registers when the tray watcher returns — either way
+//!   the icon comes back, with no in-daemon re-registration/reconnection logic.
 //!
 //! Registration is still best-effort: on a host with no SNI tray the daemon keeps
 //! polling and notifying, and the viewer opens via a notification or `fodder`.
@@ -144,10 +146,12 @@ pub async fn spawn(
     }
 }
 
-/// Resolve when the D-Bus **session bus** becomes unreachable — which is what a
-/// logout does (the socket is severed). `main` uses this as a shutdown trigger so
-/// the daemon exits with the session and the next login's autostart starts a
-/// fresh one.
+/// Resolve when the D-Bus **session bus** becomes unreachable — e.g. a logout
+/// that tears the session bus down (as happens on many setups; the socket is
+/// severed). `main` uses this as a shutdown trigger so the daemon exits with the
+/// session and the next login's autostart starts a fresh one. Where the session
+/// bus instead persists across logout this simply never resolves, and `ksni`'s
+/// own watcher re-registration keeps the tray alive across the shell restart.
 ///
 /// This watches a dedicated connection to the session bus (`ksni` doesn't expose
 /// its own); both share the same bus, so they drop together on logout. We only

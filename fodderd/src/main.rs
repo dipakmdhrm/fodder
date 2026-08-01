@@ -100,10 +100,12 @@ async fn main() -> Result<()> {
     // owns the handle and tears it down on shutdown.
     let tray_handle = tray::spawn(open_tx, refresh_tx, shutdown.clone()).await;
 
-    // Exit with the graphical session: when the D-Bus session bus goes away
-    // (a logout severs it), shut the daemon down so the next login's autostart
-    // brings up a fresh one on the live bus — rather than lingering with a dead
-    // tray connection. Only armed when a tray initialized (i.e. there is a bus).
+    // Exit with the graphical session: when a logout tears down the D-Bus session
+    // bus, shut the daemon down so the next login's autostart brings up a fresh
+    // one on the live bus — rather than lingering with a dead tray connection.
+    // (Where the bus persists across logout this never fires and the daemon keeps
+    // running; ksni re-registers the tray on the watcher's return.) Only armed
+    // when a tray initialized (i.e. there is a bus).
     if tray_handle.is_some() {
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
