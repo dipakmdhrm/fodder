@@ -151,14 +151,15 @@ pub async fn spawn(
 ///
 /// This watches a dedicated connection to the session bus (`ksni` doesn't expose
 /// its own); both share the same bus, so they drop together on logout. We only
-/// arm this once a tray has initialized (so a bus was present); a failure to open
-/// the monitor is therefore a transient gap — we retry briefly, and if it still
-/// fails we log and never resolve (better to keep running than to exit spuriously).
+/// arm this once a tray has initialized (so a bus was present), which means a
+/// persistent failure to (re)open the monitor is itself evidence the bus is gone
+/// — e.g. a logout that raced the monitor's first connect. So after a brief retry
+/// we treat that as session loss and resolve too, rather than get stuck alive.
 pub async fn wait_for_session_bus_loss() {
     for attempt in 1..=5 {
         match zbus::Connection::session().await {
             Ok(conn) => {
-                conn.closed().await;
+                conn.closed().await; // bus dropped -> session loss
                 return;
             }
             Err(e) => {
@@ -167,10 +168,12 @@ pub async fn wait_for_session_bus_loss() {
             }
         }
     }
+    // Couldn't hold a connection at all despite a bus having been present at
+    // startup: treat as session loss and return so the caller shuts us down (the
+    // next login's autostart brings up a fresh daemon).
     tracing::warn!(
-        "session-bus monitor: could not open a connection; logout won't trigger a clean exit"
+        "session-bus monitor: bus unreachable after retries; treating it as session loss"
     );
-    std::future::pending::<()>().await;
 }
 
 // --- icon embedding --------------------------------------------------------
