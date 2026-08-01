@@ -51,10 +51,21 @@ pub fn desktop_path() -> Result<PathBuf> {
 /// Whether autostart is currently enabled: the marker under Flatpak, else the
 /// presence of the native autostart `.desktop` file.
 pub fn is_enabled() -> bool {
-    if is_flatpak() {
-        return flatpak_marker_path().map(|p| p.exists()).unwrap_or(false);
+    let marker_exists = flatpak_marker_path().map(|p| p.exists()).unwrap_or(false);
+    let desktop_exists = desktop_path().map(|p| p.exists()).unwrap_or(false);
+    resolve_enabled(is_flatpak(), marker_exists, desktop_exists)
+}
+
+/// Pure autostart-state decision, split out so it's testable without touching
+/// the real filesystem: inside Flatpak the marker is authoritative, natively the
+/// autostart `.desktop` file is. This nails down that native installs
+/// (`.deb`/`.rpm`/Arch) keep reading the desktop file, never the marker.
+fn resolve_enabled(is_flatpak: bool, marker_exists: bool, desktop_exists: bool) -> bool {
+    if is_flatpak {
+        marker_exists
+    } else {
+        desktop_exists
     }
-    desktop_path().map(|p| p.exists()).unwrap_or(false)
 }
 
 /// Record the Flatpak autostart intent by creating/removing the marker file.
@@ -143,6 +154,27 @@ mod tests {
         assert!(
             !cmd.iter().any(|a| a.contains("open-viewer")),
             "autostart must not open the viewer on every login"
+        );
+    }
+
+    #[test]
+    fn enabled_state_reads_the_right_source() {
+        // Natively (.deb/.rpm/Arch) autostart state comes ONLY from the desktop
+        // file — the Flatpak marker is ignored, so native behavior is unchanged.
+        assert!(
+            resolve_enabled(false, false, true),
+            "native: desktop file on"
+        );
+        assert!(
+            !resolve_enabled(false, true, false),
+            "native ignores marker"
+        );
+        // Inside Flatpak it's the reverse: the marker decides, the (useless)
+        // sandbox-private desktop file is ignored.
+        assert!(resolve_enabled(true, true, false), "flatpak: marker on");
+        assert!(
+            !resolve_enabled(true, false, true),
+            "flatpak ignores desktop"
         );
     }
 

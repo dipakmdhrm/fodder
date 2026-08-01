@@ -173,7 +173,7 @@ Tests live next to the code in `core/` (plus one integration file), and the daem
 - **`core/src/poller/http.rs`** - `parse_retry_after` (seconds, HTTP-date, garbage).
 - **`core/src/poller/mod.rs`** - RSS parse into title + items; `backoff_next` growth and cap.
 - **`core/src/ipc.rs`** - round-trip of every `IpcMessage` variant (incl. `SetAutostart`) over `tokio::io::duplex`, partial-frame reassembly, and clean-EOF -> `None`.
-- **`core/src/autostart.rs`** - the pure Flatpak helpers: `portal_autostart_command()` starts the daemon headless (no viewer), and the marker path resolves under the config dir. The native file writes and the daemon's async Background-portal call (`fodderd/portal.rs`) are platform glue, not unit-tested.
+- **`core/src/autostart.rs`** - the pure helpers: `portal_autostart_command()` starts the daemon headless (no viewer), the marker path resolves under the config dir, and `resolve_enabled()` reads the desktop file natively vs the marker under Flatpak (pinning that `.deb`/`.rpm`/Arch behavior is unchanged). The native file writes and the daemon's async Background-portal call (`fodderd/portal.rs`) are platform glue, not unit-tested.
 - **`core/tests/conditional_get.rs`** - the conditional-GET path against a `wiremock` server: conditional headers actually sent (verified via the recorded request), 304 handling, validator capture, 429 with seconds and HTTP-date, and non-2xx -> error.
 - **`fodder/src/reader.rs`** - HTML->Pango: scripts stripped, basic formatting converted, entities escaped, safe links kept.
 - **`fodderd/src/reminder.rs`** - the next-occurrence time math stays within a day.
