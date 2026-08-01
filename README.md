@@ -78,6 +78,11 @@ flatpak install fodder io.github.dipakmdhrm.Fodder
 ```
 `flatpak update` then keeps it current.
 
+> **Flathub** (pending review): once accepted, `flatpak install flathub
+> io.github.dipakmdhrm.Fodder` will install from Flathub instead of this repo.
+> The Flathub build manifest and its vendored crate sources live in
+> `packaging/flatpak/flathub/`.
+
 ### From source (per-user, no packaging)
 
 ```bash

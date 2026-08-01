@@ -36,6 +36,14 @@ pub enum IpcMessage {
     },
     /// The config file changed; the daemon should reload it.
     ReloadConfig,
+    /// Toggle launch-at-login. The daemon owns the mechanism: a native
+    /// `~/.config/autostart` entry, or — inside a Flatpak sandbox — an XDG
+    /// Background portal request. Routed through the daemon because the portal
+    /// call is async D-Bus and the daemon is the process that runs in the
+    /// background.
+    SetAutostart {
+        enabled: bool,
+    },
     /// The viewer reports what it's currently showing, so the daemon can restore
     /// it on the next open. `article_id`/`feed_id` are `None` when nothing is open.
     ReadingState {
@@ -125,6 +133,8 @@ mod tests {
                 title: "E".into(),
             },
             IpcMessage::ReloadConfig,
+            IpcMessage::SetAutostart { enabled: true },
+            IpcMessage::SetAutostart { enabled: false },
             IpcMessage::ReadingState {
                 feed_id: Some(2),
                 article_id: Some(9),

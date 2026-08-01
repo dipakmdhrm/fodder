@@ -6,6 +6,7 @@
 //! drives the open-request path.
 
 mod notify;
+mod portal;
 mod reminder;
 mod scheduler;
 mod self_update;

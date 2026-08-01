@@ -6,6 +6,19 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Added
+- **Flathub packaging.** A dedicated, fully-offline Flatpak manifest
+  (`packaging/flatpak/flathub/`) plus an AppStream metainfo file
+  (`data/metainfo/io.github.dipakmdhrm.Fodder.metainfo.xml`) prepare Fodder for
+  submission to Flathub. The manifest builds without network access: Rust comes
+  from the `rust-stable` SDK extension and every crate is vendored via a
+  generated `cargo-sources.json`.
+- **Autostart works inside Flatpak.** Launch-at-login now uses the XDG
+  **Background** portal when running in a sandbox (writing `~/.config/autostart`
+  directly is a no-op there). The toggle routes through the daemon, which owns
+  the async portal request; native installs keep using the autostart `.desktop`
+  file. Adds a `SetAutostart` IPC message.
+
 ## 0.3.1
 
 ### Fixed
