@@ -5,19 +5,25 @@
 //! polling and notifying, and the viewer can still be opened via a notification
 //! click or by re-running `fodder`.
 //!
-//! **Recovery is event-driven**, like well-behaved SNI apps: `ksni` re-registers
-//! the item whenever the tray watcher (`org.kde.StatusNotifierWatcher`) restarts
-//! on the same bus, so a shell/watcher restart doesn't lose the icon. We do NOT
-//! poll.
+//! **Recovery is event-driven — we never poll.** Three layers, each matched to a
+//! distinct failure the daemon (which outlives graphical sessions) actually hits:
 //!
-//! The one wrinkle unique to fodder is `self_update`: on a package upgrade the
-//! daemon re-execs itself (same PID), which releases and then immediately
-//! re-requests the *same* well-known name `org.kde.StatusNotifierItem-<pid>-1`.
-//! That handoff can race the watcher's prune-on-owner-vanished and drop us with
-//! no further signal. So [`run`] does a single **deferred re-registration check**
-//! shortly after startup: if our still-owned item isn't in the watcher's list,
-//! re-register it once (a plain `RegisterStatusNotifierItem`, no tear-down). This
-//! is a bounded one-shot, not a periodic poll.
+//! 1. **Watcher restart** (shell restart on the same bus): `ksni` re-registers
+//!    the item when `org.kde.StatusNotifierWatcher` reappears. We also pass
+//!    `assume_sni_available(true)` so a daemon that autostarts *before* the host
+//!    is up doesn't fail hard — it waits and registers when the watcher appears.
+//! 2. **Session-bus connection death** (a full logout/login severs the D-Bus
+//!    connection with an I/O error; the daemon survives but ksni's connection is
+//!    dead and it does not reconnect). [`run`] holds its own connection on the
+//!    same bus and awaits [`zbus::Connection::closed`]; when it fires, the tray
+//!    is re-established on a fresh connection. This is the case that made the
+//!    icon vanish after logout/login.
+//! 3. **Re-exec handoff prune**: `self_update` re-execs the daemon (same PID),
+//!    which releases and re-requests the *same* `org.kde.StatusNotifierItem-<pid>-1`
+//!    name — a handoff that can race the watcher's prune with no further signal.
+//!    A single **deferred re-registration check** ~5s after (re)spawn re-adds our
+//!    still-owned item if it's missing (a plain `RegisterStatusNotifierItem`, no
+//!    tear-down). A bounded one-shot, not a periodic poll.
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -37,6 +43,13 @@ const WATCHER_NAME: &str = "org.kde.StatusNotifierWatcher";
 /// Delay after spawning before the one-shot re-registration check, long enough
 /// for a `self_update` re-exec handoff to have settled at the watcher.
 const STARTUP_RECONCILE_DELAY: Duration = Duration::from_secs(5);
+
+/// Backoff after a connection loss / spawn failure before re-establishing, so a
+/// bus that's mid-replacement (during a session transition) has time to come up.
+const REESTABLISH_DELAY: Duration = Duration::from_secs(1);
+
+/// Cap for spawn-retry backoff (used when the bus can't be reached yet).
+const MAX_SPAWN_BACKOFF: Duration = Duration::from_secs(30);
 
 /// The tray model. Holds only cloneable senders so menu callbacks can hand work
 /// off to the daemon without blocking the menu.
@@ -128,10 +141,10 @@ impl Tray for FodderTray {
     }
 }
 
-/// Run the tray for the daemon's lifetime: spawn it, do a one-shot deferred
-/// re-registration check (to neutralize the `self_update` re-exec handoff race),
-/// then idle until `stop` is notified and tear the tray down. Ongoing recovery
-/// across watcher restarts is `ksni`'s job — no polling here.
+/// Run the tray for the daemon's lifetime. (Re)establishes the tray and holds it
+/// until the session-bus connection dies, then re-establishes on a fresh
+/// connection — so the icon survives a logout/login that severed D-Bus. Returns
+/// when `stop` is notified (daemon shutdown).
 ///
 /// `quit` is the daemon-wide shutdown handle handed to the tray's Quit action;
 /// `stop` is how `main` tells this task to exit.
@@ -141,46 +154,109 @@ pub async fn run(
     quit: Arc<Notify>,
     stop: Arc<Notify>,
 ) {
-    let handle = spawn(&open_tx, &refresh_tx, &quit).await;
-    let has_tray = handle.is_some();
+    let pid = std::process::id();
+    loop {
+        // 1. (Re)establish the tray, retrying until it spawns or we're stopped.
+        let Some(handle) = spawn_with_retry(&open_tx, &refresh_tx, &quit, &stop).await else {
+            return; // stop requested during retry
+        };
 
-    // The one-shot reconcile, then idle forever (cancelled by `stop` below).
-    let reconcile = async {
-        if has_tray {
-            tokio::time::sleep(STARTUP_RECONCILE_DELAY).await;
-            reconcile_registration(std::process::id()).await;
+        // 2. Hold until the session-bus connection dies (event-driven) or stop,
+        //    running the one-shot re-exec reconcile shortly after (re)spawn.
+        let outcome = hold_until_bus_death_or_stop(pid, &stop).await;
+
+        // 3. Tear down the (now likely dead) handle before re-establishing.
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle.shutdown()).await;
+
+        match outcome {
+            HoldOutcome::Stop => return,
+            HoldOutcome::BusDied => {
+                tracing::warn!("session D-Bus connection lost; re-establishing the tray");
+                tokio::time::sleep(REESTABLISH_DELAY).await;
+            }
         }
-        std::future::pending::<()>().await;
-    };
-
-    tokio::select! {
-        _ = stop.notified() => {}
-        _ = reconcile => {}
-    }
-
-    if let Some(h) = handle {
-        let _ = tokio::time::timeout(Duration::from_secs(2), h.shutdown()).await;
     }
 }
 
-/// Try to register the tray once. Returns the handle on success, or `None` if no
-/// SNI host is available.
+/// Why [`hold_until_bus_death_or_stop`] returned.
+enum HoldOutcome {
+    /// `stop` was notified — the daemon is shutting down.
+    Stop,
+    /// The session-bus connection closed — re-establish the tray.
+    BusDied,
+}
+
+/// Hold the (already-spawned) tray until the session-bus connection dies or we're
+/// stopped. Monitors a connection on the same bus as `ksni` via
+/// [`zbus::Connection::closed`]; when both die together (bus replaced on a
+/// session boundary) we surface `BusDied`. Also runs the one-shot re-exec
+/// reconcile ~5s in.
+async fn hold_until_bus_death_or_stop(pid: u32, stop: &Notify) -> HoldOutcome {
+    // A monitor connection on the same session bus. If we can't even open one,
+    // the bus is unreachable now — treat as a death so we re-establish.
+    let monitor = match zbus::Connection::session().await {
+        Ok(conn) => conn,
+        Err(_) => {
+            tokio::select! {
+                _ = stop.notified() => return HoldOutcome::Stop,
+                _ = tokio::time::sleep(REESTABLISH_DELAY) => return HoldOutcome::BusDied,
+            }
+        }
+    };
+
+    let mut reconciled = false;
+    loop {
+        tokio::select! {
+            _ = stop.notified() => return HoldOutcome::Stop,
+            _ = monitor.closed() => return HoldOutcome::BusDied,
+            // One-shot, ~5s after (re)spawn: fix a re-exec handoff prune.
+            _ = tokio::time::sleep(STARTUP_RECONCILE_DELAY), if !reconciled => {
+                reconcile_registration(pid).await;
+                reconciled = true;
+            }
+        }
+    }
+}
+
+/// Spawn the tray, retrying with backoff until it succeeds or `stop` fires.
+/// Because we pass `assume_sni_available(true)`, `spawn` only fails when the bus
+/// itself is unreachable (e.g. mid-replacement), so retrying is bounded to that.
+async fn spawn_with_retry(
+    open_tx: &UnboundedSender<OpenRequest>,
+    refresh_tx: &UnboundedSender<Option<i64>>,
+    quit: &Arc<Notify>,
+    stop: &Notify,
+) -> Option<Handle<FodderTray>> {
+    let mut backoff = REESTABLISH_DELAY;
+    loop {
+        if let Some(handle) = spawn(open_tx, refresh_tx, quit).await {
+            return Some(handle);
+        }
+        tokio::select! {
+            _ = stop.notified() => return None,
+            _ = tokio::time::sleep(backoff) => {}
+        }
+        backoff = (backoff * 2).min(MAX_SPAWN_BACKOFF);
+    }
+}
+
+/// Try to register the tray once. `assume_sni_available(true)` means a missing
+/// host is not a hard error: `ksni` keeps the item and registers it once a
+/// watcher appears (handles autostarting before the host is up). Returns `None`
+/// only if the D-Bus connection itself couldn't be established.
 async fn spawn(
     open_tx: &UnboundedSender<OpenRequest>,
     refresh_tx: &UnboundedSender<Option<i64>>,
     quit: &Arc<Notify>,
 ) -> Option<Handle<FodderTray>> {
     let tray = FodderTray::new(open_tx.clone(), refresh_tx.clone(), quit.clone());
-    match tray.spawn().await {
+    match tray.assume_sni_available(true).spawn().await {
         Ok(handle) => {
-            tracing::info!("system tray registered");
+            tracing::info!("system tray initialized");
             Some(handle)
         }
         Err(e) => {
-            tracing::warn!(
-                "no system tray available ({e}); continuing without it \
-                 (notifications and `fodder` re-run still open the viewer)"
-            );
+            tracing::warn!("could not initialize the system tray ({e}); will retry");
             None
         }
     }

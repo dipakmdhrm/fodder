@@ -6,6 +6,15 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Fixed
+- The system-tray icon no longer disappears after logging out and back in. A full
+  logout/login severs the daemon's D-Bus session connection (an I/O error on the
+  socket); the daemon keeps running but the tray library doesn't reconnect, so
+  the icon was lost until the daemon restarted. The daemon now detects the
+  connection dying and re-establishes the tray on a fresh connection. It also
+  tolerates autostarting before the desktop's tray host is ready (registering
+  once the host appears) instead of giving up.
+
 ## 0.3.0
 
 ### Added
