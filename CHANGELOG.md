@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.3.1
+
 ### Fixed
 - The system-tray icon no longer disappears after logging out and back in. The
   daemon was surviving logout with a dead D-Bus connection (so the tray couldn't
