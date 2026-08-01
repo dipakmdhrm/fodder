@@ -20,7 +20,7 @@ serde.workspace = true
 serde_json.workspace = true
 ksni.workspace = true
 # Already in the tree via ksni (with the tokio feature); used directly here to
-# query the StatusNotifierWatcher for the tray self-heal check.
+# await the D-Bus session connection closing (the tray's exit-on-logout trigger).
 zbus = "5"
 # Decode the embedded PNG app icon into ARGB pixmaps for the tray (so hosts that
 # mishandle the themed IconName still render it).

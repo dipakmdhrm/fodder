@@ -96,18 +96,26 @@ async fn main() -> Result<()> {
         reading_state: Arc::new(Mutex::new(state::ReadingState::default())),
     };
 
-    // Best-effort system tray. `ksni` re-registers across watcher restarts on
-    // its own; `run` adds a one-shot post-startup re-registration check to
-    // neutralize the self_update re-exec handoff. Graceful degrade if no SNI
-    // host is present. `tray_stop` tears it down on shutdown; the tray's Quit
-    // action uses the daemon-wide `shutdown`.
-    let tray_stop = Arc::new(Notify::new());
-    let tray_task = tokio::spawn(tray::run(
-        open_tx,
-        refresh_tx,
-        shutdown.clone(),
-        tray_stop.clone(),
-    ));
+    // Best-effort system tray; graceful degrade if no SNI host is present. `main`
+    // owns the handle and tears it down on shutdown.
+    let tray_handle = tray::spawn(open_tx, refresh_tx, shutdown.clone()).await;
+
+    // Exit with the graphical session: when a logout tears down the D-Bus session
+    // bus, shut the daemon down so the next login's autostart brings up a fresh
+    // one on the live bus — rather than lingering with a dead tray connection.
+    // (Where the bus persists across logout this never fires and the daemon keeps
+    // running; ksni re-registers the tray on the watcher's return.) Only armed
+    // when a tray initialized (i.e. there is a bus).
+    if tray_handle.is_some() {
+        let shutdown = shutdown.clone();
+        tokio::spawn(async move {
+            tray::wait_for_session_bus_loss().await;
+            tracing::info!(
+                "D-Bus session bus lost (logout?); shutting down to be relaunched fresh"
+            );
+            shutdown.notify_one();
+        });
+    }
 
     // Long-running tasks.
     let server_ctx = ctx.clone();
@@ -146,9 +154,11 @@ async fn main() -> Result<()> {
 
     // Terminate the viewer child, tear down the tray, and clean up the socket.
     viewer_proc::kill(&ctx);
-    // Stop the tray supervisor and give it a moment to remove the SNI item.
-    tray_stop.notify_one();
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), tray_task).await;
+    if let Some(handle) = tray_handle {
+        // Bounded: if we're shutting down because the session bus died, the
+        // tray's own D-Bus teardown would otherwise hang.
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle.shutdown()).await;
+    }
     server_task.abort();
     sched_task.abort();
     open_task.abort();
@@ -159,6 +169,12 @@ async fn main() -> Result<()> {
     // socket, tray, and viewer are gone, hand off to the new binary in place.
     if reexec.load(Ordering::SeqCst) {
         if let Some(exe) = exe_path {
+            // Give the SNI watcher a moment to process our tray's deregistration
+            // before the re-exec'd process (same PID) re-registers the same
+            // well-known name, so the two don't race and drop the icon. Native
+            // only — this path never fires under Flatpak (which uses ksni's
+            // unique name and doesn't hit in-place binary replacement anyway).
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             tracing::info!("re-executing {}", exe.display());
             let err = self_update::reexec_into(&exe);
             tracing::error!("re-exec failed, exiting: {err}");
