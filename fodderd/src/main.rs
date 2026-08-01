@@ -100,15 +100,17 @@ async fn main() -> Result<()> {
     // owns the handle and tears it down on shutdown.
     let tray_handle = tray::spawn(open_tx, refresh_tx, shutdown.clone()).await;
 
-    // Exit with the graphical session: when the D-Bus session connection dies
+    // Exit with the graphical session: when the D-Bus session bus goes away
     // (a logout severs it), shut the daemon down so the next login's autostart
     // brings up a fresh one on the live bus — rather than lingering with a dead
-    // tray connection. Only armed when a tray registered (i.e. there is a bus).
+    // tray connection. Only armed when a tray initialized (i.e. there is a bus).
     if tray_handle.is_some() {
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
-            tray::wait_for_session_end().await;
-            tracing::info!("D-Bus session ended (logout?); shutting down to be relaunched fresh");
+            tray::wait_for_session_bus_loss().await;
+            tracing::info!(
+                "D-Bus session bus lost (logout?); shutting down to be relaunched fresh"
+            );
             shutdown.notify_one();
         });
     }
@@ -165,6 +167,12 @@ async fn main() -> Result<()> {
     // socket, tray, and viewer are gone, hand off to the new binary in place.
     if reexec.load(Ordering::SeqCst) {
         if let Some(exe) = exe_path {
+            // Give the SNI watcher a moment to process our tray's deregistration
+            // before the re-exec'd process (same PID) re-registers the same
+            // well-known name, so the two don't race and drop the icon. Native
+            // only — this path never fires under Flatpak (which uses ksni's
+            // unique name and doesn't hit in-place binary replacement anyway).
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             tracing::info!("re-executing {}", exe.display());
             let err = self_update::reexec_into(&exe);
             tracing::error!("re-exec failed, exiting: {err}");

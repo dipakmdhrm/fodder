@@ -3,16 +3,16 @@
 //! Kept deliberately simple by tying the tray to the *session* lifecycle instead
 //! of trying to keep it alive across sessions:
 //!
-//! - We register with `disable_dbus_name(true)`, so the item uses `ksni`'s unique
-//!   D-Bus connection name rather than a well-known `org.kde.StatusNotifierItem-…`
-//!   name. That works inside Flatpak (which can't own that name) and means a
-//!   restarted daemon never collides with a previous registration.
 //! - `assume_sni_available(true)` lets us autostart *before* the desktop's tray
-//!   host is up: `ksni` keeps the item and registers once the watcher appears.
-//! - When the D-Bus *session* connection dies — which is what a logout does — the
-//!   daemon shuts down (see [`wait_for_session_end`], wired up in `main`), so the
-//!   next login's autostart brings up a fresh daemon on a fresh connection with a
-//!   working tray. No in-daemon re-registration/reconnection logic needed.
+//!   host is up: `ksni` keeps the item and registers once the watcher appears
+//!   (and re-registers across watcher restarts on its own).
+//! - On Flatpak we register with `disable_dbus_name(true)` (unique connection
+//!   name, since the sandbox can't own the well-known `org.kde.StatusNotifierItem-…`
+//!   name); native installs keep the spec-recommended well-known name.
+//! - When the D-Bus *session bus* goes away — which is what a logout does — the
+//!   daemon shuts down (see [`wait_for_session_bus_loss`], wired up in `main`), so
+//!   the next login's autostart brings up a fresh daemon on a fresh connection
+//!   with a working tray. No in-daemon re-registration/reconnection logic needed.
 //!
 //! Registration is still best-effort: on a host with no SNI tray the daemon keeps
 //! polling and notifying, and the viewer opens via a notification or `fodder`.
@@ -116,14 +116,22 @@ pub async fn spawn(
         shutdown,
         icons: app_icons(),
     };
+    // Inside a Flatpak sandbox we can't own the well-known
+    // `org.kde.StatusNotifierItem-<pid>-1` name, so register under `ksni`'s
+    // unique connection name there. On native installs we keep the
+    // spec-recommended well-known name for maximum host compatibility (ksni
+    // documents `disable_dbus_name` as a sandbox-only, spec-violating workaround).
+    let sandboxed = std::path::Path::new("/.flatpak-info").exists();
     match tray
-        .disable_dbus_name(true)
+        .disable_dbus_name(sandboxed)
         .assume_sni_available(true)
         .spawn()
         .await
     {
         Ok(handle) => {
-            tracing::info!("system tray registered");
+            // "initialized", not "registered": with assume_sni_available this can
+            // succeed before a watcher exists (registration follows when it does).
+            tracing::info!("system tray initialized");
             Some(handle)
         }
         Err(e) => {
@@ -136,15 +144,33 @@ pub async fn spawn(
     }
 }
 
-/// Resolve when the D-Bus *session* connection ends — which is what happens on
-/// logout (the socket is severed). `main` uses this as a shutdown trigger so the
-/// daemon exits with the session and the next login starts a fresh one. If there
-/// is no session bus at all (headless), never resolves.
-pub async fn wait_for_session_end() {
-    match zbus::Connection::session().await {
-        Ok(conn) => conn.closed().await,
-        Err(_) => std::future::pending().await,
+/// Resolve when the D-Bus **session bus** becomes unreachable — which is what a
+/// logout does (the socket is severed). `main` uses this as a shutdown trigger so
+/// the daemon exits with the session and the next login's autostart starts a
+/// fresh one.
+///
+/// This watches a dedicated connection to the session bus (`ksni` doesn't expose
+/// its own); both share the same bus, so they drop together on logout. We only
+/// arm this once a tray has initialized (so a bus was present); a failure to open
+/// the monitor is therefore a transient gap — we retry briefly, and if it still
+/// fails we log and never resolve (better to keep running than to exit spuriously).
+pub async fn wait_for_session_bus_loss() {
+    for attempt in 1..=5 {
+        match zbus::Connection::session().await {
+            Ok(conn) => {
+                conn.closed().await;
+                return;
+            }
+            Err(e) => {
+                tracing::debug!("session-bus monitor: connect attempt {attempt} failed ({e})");
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
     }
+    tracing::warn!(
+        "session-bus monitor: could not open a connection; logout won't trigger a clean exit"
+    );
+    std::future::pending::<()>().await;
 }
 
 // --- icon embedding --------------------------------------------------------
