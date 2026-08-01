@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.4.0
+
 ### Added
 - **Flathub packaging.** A dedicated, fully-offline Flatpak manifest
   (`packaging/flatpak/flathub/`) plus an AppStream metainfo file
