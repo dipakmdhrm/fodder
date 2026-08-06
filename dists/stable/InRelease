@@ -4,44 +4,44 @@ Hash: SHA512
 Origin: Fodder
 Label: Fodder
 Codename: stable
-Date: Sat, 01 Aug 2026 09:04:50 UTC
+Date: Thu, 06 Aug 2026 09:56:13 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Fodder APT repository
 MD5Sum:
- 0e9cc0f7ea06a7ddb0d3bf177f9423d2 753 main/binary-amd64/Packages
- 2930190baea5fda51dc888693331fa3f 523 main/binary-amd64/Packages.gz
+ e0773ab90baedb0422d466267e28a9ff 753 main/binary-amd64/Packages
+ c6428c962a4af584a993e64ef23e4434 523 main/binary-amd64/Packages.gz
  598dec8dea8e5a84f75534fb64001b26 100 main/binary-amd64/Release
- 3a11b04ac688d55fe89a229836aa594f 753 main/binary-arm64/Packages
- 1fbe70cb7dfb1fa1c7558ab796a29bf8 524 main/binary-arm64/Packages.gz
+ 4d944f3a0bfcce1f517c89375b15590a 753 main/binary-arm64/Packages
+ ccceb4e89f4a706232d44bfaf02df4a5 523 main/binary-arm64/Packages.gz
  8c59279aa752718486b514d9601b425a 100 main/binary-arm64/Release
 SHA1:
- 1fb5be91edf7b04ec362a30ba4703665568dcf5f 753 main/binary-amd64/Packages
- 809b58cd11e27ca69a36defe12fda2bbfd821bc9 523 main/binary-amd64/Packages.gz
+ 2473de844aa120bc2a01518d0cdc105ce598f3d9 753 main/binary-amd64/Packages
+ 920d3ff025b3a43e41c1769ef6670980a932727d 523 main/binary-amd64/Packages.gz
  ebfdd91188038b3129755d360695040c669537b9 100 main/binary-amd64/Release
- 4879bab1ed9043fde8c1fcb3695180d86c3c6399 753 main/binary-arm64/Packages
- 4312ac32e41693a3800adc406fa4ffd2ab9b5ddb 524 main/binary-arm64/Packages.gz
+ 63d005519379e47a961be013cd259f27bfe1a77f 753 main/binary-arm64/Packages
+ 3716d6439a72279ca4a469f91e203212c00839a0 523 main/binary-arm64/Packages.gz
  5b356b16e3473250170a77bf7cf9f2181956325e 100 main/binary-arm64/Release
 SHA256:
- db235863da9741571825f8fe4b938d6e1525d543b7151cc549279c80e8c13713 753 main/binary-amd64/Packages
- c2fafddee3860345cf413a814be75b73a1d68467ab3c04b86feb60083906b1de 523 main/binary-amd64/Packages.gz
+ 8e0b86ba3f1a30a8ecd125c34031536f96ded137b1c6a484dd53789e24e8652c 753 main/binary-amd64/Packages
+ e228632a549403f53576183a8ad28214f62a451992d5b218c1f2fc38cf3cc158 523 main/binary-amd64/Packages.gz
  69d4f347ab5c9248201586a6b1cb3b63a34a629af6d4fb175c36933d663fa83a 100 main/binary-amd64/Release
- 39a44ea1832081838ad964acd3544dad3ac120211d9cbf10a9fcc8a16a7f9dd6 753 main/binary-arm64/Packages
- 63a76d6a1f8f4bcb4a67a8ac54b13848882fcadf8e57f807bd8759bff2182aef 524 main/binary-arm64/Packages.gz
+ cb66c5620e3d42fde79e4b33e663a335b5a94ef599d29b25a0c68e6c94463c61 753 main/binary-arm64/Packages
+ 5ea4321efe5f1adfb7ce97c63a117e7ddda6aff1f80554142c2b00d0ca16a149 523 main/binary-arm64/Packages.gz
  f0250eeaf9792321ea92d9d03a4c07390c6b99863757a8c81691c741da2bc17e 100 main/binary-arm64/Release
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEEgHeJDf19ypY1ZjZPufEEIeNknOsFAmpttrIACgkQufEEIeNk
-nOsfoQ//bgbNdJSkyv+IFxCGBr4jKVBgsPPiQkD3r/SCqX0d6v910KftRJZZzXW2
-H3XLLkeq1V5PWxKzDvLre71zJSLwXgmH9evgiWpGAPd/3R0xVzF6Mr8N4tVAlGD8
-6cygI3Huqg/qY4ela4V4apSRXp4Cio+cxoH09ihsebcfmYR6hOVY741SLF6SvknV
-+pxqsqASiL79c7xIu7Y41NIYw8lNIWL4Nds5lA4Zs2iFYyGdTSahn4p/1l+4s1Am
-2mZlI2Nq11KBcc1EQkBuhYQc/7sO/lBer/P8vYxjIt3nF6AaUTocOpEoq0vfW/X3
-iMto1RpxMf077jGtXztvubDqYDoDEO6IB9IerXxmxkmEe14/hCyVjlc9HVtFD3qM
-qOfV0/pXckAF9zN/m+VTakuD7eXJ9ZXj3FoEOc7eOwoWT8rpM04Ha+XSRqx8bUV/
-xOP6ac+XNUMzcyMpM1UBwwaJzdEIVN0UA8iut0XcL9M4OHJ3hAHe+NiIPbvKUoOv
-DWNXNaT9QQ84+6zc4obn3O+eAPNC21LXCOKVpXuk1jFpx35z64EQ/2fQJBftDg6B
-/N0BDQxGv6xsF0aRnnAzWyTbaRu73yL9Lqg+hfdSYE38h0NeJisWG9Pl/NlXePhY
-MA7JAxVfnbQ8KKTxcN+O95LbT8khbLLpcceeGVDzT9cPgiBg7Ao=
-=W5bh
+iQIzBAEBCgAdFiEEgHeJDf19ypY1ZjZPufEEIeNknOsFAmp0Wj0ACgkQufEEIeNk
+nOtSIw//RAuW0qeJ/1MvOoRpeMSopMqJlYe6Bg2QU/cLqzW7jX6EdBKCXa5EoM7I
+eERRiQ9RezWebzKhQ64aGdyL9KLoEnLfgXWgbMfcHvGBxs9CabTdk1t7nMngDMHn
+dFW/+OP2F9ROFKtBlGKVexO50uuWl/NRqNXEx3hJn5gxBokik6YCrtdiKYIpBK6q
+TdyDeh4xAXr6U4Mz+lZ9lXahXGIQFoLdxA8zOYR+yadgn7BOzIOrePtHyJlRso2W
+T09ZyVyGE2WR+ej+0zzn9df8n918DlwIL+t8OBowdJZs56+cZ7b+VYwCxOTCzP7+
+KOJkQWwk8aLF5XJkRPU1H7SOzvIaYage4z2Gqh5ziIvjBdyk6dlIZE1qnx7Cngp9
+MBj3DocGckBhX4n1Ho3FxiHQNNqJCabCm9BISNsWOySh3pKDKEibTr/x8xSmydWh
+1p8gRp7sxdNASzxWPE4nI9zN935e68X+tLfYE7jp7rMpRg451zQz5ubz6U4UjDoz
+T8rypW5FMHScotaP+qglR7kciLKo8wfZ1l21i1oQvM1Wv0MdEZoFn7S8Vz4orNL4
+aaz8hERf2zooXQ4zcRAVsnfmgTwAJqhjMAQvnuLH3siBhaX7kgY+b0X8k6QuhVWj
+zj6UrH2xP/mH5KY6z37YoAgiYNLhxUuq8H5Ld8NZ1rbpm1YvfZU=
+=Mv+o
 -----END PGP SIGNATURE-----
