@@ -6,6 +6,12 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Added
+- **Rename a feed.** The feed sidebar's right-click menu gains a **Rename**
+  action (and "Remove feed" is now labelled **Delete**), opening a dialog to
+  edit the feed's title. The rename routes through the daemon (the single SQLite
+  writer) via a new `RenameFeed` IPC message and refreshes the sidebar.
+
 ## 0.4.0
 
 ### Added

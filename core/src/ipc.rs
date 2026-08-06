@@ -34,6 +34,12 @@ pub enum IpcMessage {
         feed_url: String,
         title: String,
     },
+    /// Rename a feed. The daemon updates the title and broadcasts
+    /// [`IpcMessage::FeedsChanged`] so the viewer reloads.
+    RenameFeed {
+        feed_id: i64,
+        new_title: String,
+    },
     /// The config file changed; the daemon should reload it.
     ReloadConfig,
     /// Toggle launch-at-login. The daemon owns the mechanism: a native
@@ -131,6 +137,10 @@ mod tests {
             IpcMessage::SubscribeResolved {
                 feed_url: "https://e.com/f".into(),
                 title: "E".into(),
+            },
+            IpcMessage::RenameFeed {
+                feed_id: 7,
+                new_title: "New name".into(),
             },
             IpcMessage::ReloadConfig,
             IpcMessage::SetAutostart { enabled: true },

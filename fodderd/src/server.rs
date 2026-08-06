@@ -108,6 +108,10 @@ async fn handle_msg(
             let reply = subscribe(ctx, feed_url, title).await;
             let _ = out_tx.send(reply);
         }
+        IpcMessage::RenameFeed { feed_id, new_title } => {
+            let reply = rename_feed(ctx, feed_id, new_title).await;
+            let _ = out_tx.send(reply);
+        }
         IpcMessage::ReloadConfig => {
             ctx.reload_config();
             let _ = out_tx.send(IpcMessage::Ack);
@@ -213,6 +217,26 @@ async fn subscribe(ctx: &AppCtx, feed_url: String, title: String) -> IpcMessage 
         Err(e) => {
             tracing::warn!("subscribe failed for {feed_url}: {e}");
             IpcMessage::Error(format!("subscribe failed: {e}"))
+        }
+    }
+}
+
+/// Rename a feed: update the stored title and tell the viewer to reload.
+async fn rename_feed(ctx: &AppCtx, feed_id: i64, new_title: String) -> IpcMessage {
+    let title = new_title.clone();
+    let result = ctx
+        .with_conn(move |c| feeds::update_feed_title(c, feed_id, &title))
+        .await;
+
+    match result {
+        Ok(()) => {
+            tracing::info!("renamed feed {feed_id} to {new_title:?}");
+            ctx.send_to_viewer(IpcMessage::FeedsChanged);
+            IpcMessage::Ack
+        }
+        Err(e) => {
+            tracing::warn!("rename failed for feed {feed_id}: {e}");
+            IpcMessage::Error(format!("rename failed: {e}"))
         }
     }
 }
