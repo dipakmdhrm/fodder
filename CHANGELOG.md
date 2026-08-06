@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.5.0
+
 ### Added
 - **Rename a feed.** The feed sidebar's right-click menu gains a **Rename**
   action (and "Remove feed" is now labelled **Delete**), opening a dialog to
