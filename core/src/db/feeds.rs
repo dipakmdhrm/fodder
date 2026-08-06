@@ -181,6 +181,17 @@ mod tests {
     }
 
     #[test]
+    fn update_feed_title_changes_title() {
+        let db = setup();
+        let id = insert_feed(db.conn(), "https://e.com/f", "Old title").unwrap();
+        update_feed_title(db.conn(), id, "New title").unwrap();
+        let f = get_feed(db.conn(), id).unwrap().unwrap();
+        assert_eq!(f.title, "New title");
+        // Other fields (url) are untouched by a rename.
+        assert_eq!(f.url, "https://e.com/f");
+    }
+
+    #[test]
     fn feeds_due_filters_by_time() {
         let db = setup();
         let id = insert_feed(db.conn(), "https://e.com/f", "E").unwrap();

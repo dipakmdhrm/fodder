@@ -407,6 +407,11 @@ fn setup_context_menus(this: &Rc<App>) {
             app.window.clipboard().set_text(&url);
         }
     });
+    add_action(&group, "rename", this, |app| {
+        if let Some(id) = app.ctx_feed.get() {
+            app.rename_feed_dialog(id);
+        }
+    });
     add_action(&group, "remove", this, |app| {
         if let Some(id) = app.ctx_feed.get() {
             app.remove_feed(id);
@@ -508,8 +513,9 @@ fn build_feed_menu(is_real_feed: bool) -> gio::Menu {
     menu.append(Some("Refresh"), Some("feedctx.refresh"));
     menu.append(Some("Mark all as read"), Some("feedctx.markread"));
     if is_real_feed {
+        menu.append(Some("Rename"), Some("feedctx.rename"));
+        menu.append(Some("Delete"), Some("feedctx.remove"));
         menu.append(Some("Copy feed URL"), Some("feedctx.copyurl"));
-        menu.append(Some("Remove feed"), Some("feedctx.remove"));
     }
     menu
 }
@@ -1366,11 +1372,11 @@ impl App {
 
     fn remove_feed(self: &Rc<Self>, feed_id: i64) {
         let dialog = adw::AlertDialog::new(
-            Some("Remove feed?"),
+            Some("Delete feed?"),
             Some("This unsubscribes the feed and deletes its stored articles."),
         );
         dialog.add_response("cancel", "Cancel");
-        dialog.add_response("remove", "Remove");
+        dialog.add_response("remove", "Delete");
         dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
@@ -1392,6 +1398,51 @@ impl App {
                         Err(e) => tracing::warn!("remove feed failed: {e}"),
                     },
                 );
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    /// Load the feed's current title, then show the rename dialog pre-filled.
+    fn rename_feed_dialog(self: &Rc<Self>, feed_id: i64) {
+        let this = self.clone();
+        runtime::run_db(
+            self.rt.handle(),
+            self.db.clone(),
+            move |c| feeds::get_feed(c, feed_id),
+            move |res| match res {
+                Ok(Some(feed)) => this.show_rename_dialog(feed_id, feed.title),
+                Ok(None) => tracing::warn!("rename: feed {feed_id} not found"),
+                Err(e) => tracing::warn!("rename: failed to load feed {feed_id}: {e}"),
+            },
+        );
+    }
+
+    fn show_rename_dialog(self: &Rc<Self>, feed_id: i64, current: String) {
+        let entry = gtk::Entry::builder()
+            .text(&current)
+            .activates_default(true)
+            .build();
+        let dialog = adw::AlertDialog::new(
+            Some("Rename feed"),
+            Some("Enter a new title for this feed."),
+        );
+        dialog.set_extra_child(Some(&entry));
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("rename", "Rename");
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("rename"));
+        dialog.set_close_response("cancel");
+
+        let this = self.clone();
+        dialog.connect_response(None, move |_, response| {
+            if response == "rename" {
+                let new_title = entry.text().trim().to_string();
+                if !new_title.is_empty() && new_title != current {
+                    let _ = this
+                        .cmd_tx
+                        .send(IpcMessage::RenameFeed { feed_id, new_title });
+                }
             }
         });
         dialog.present(Some(&self.window));
