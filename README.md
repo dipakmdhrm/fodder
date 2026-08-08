@@ -4,8 +4,12 @@ A lightweight RSS / Atom / JSON-Feed reader for Linux desktops (GNOME, KDE,
 XFCE/Sway), written in Rust.
 
 Fodder is built around a small, always-resident **daemon** that does the
-polling and notifying, and a **viewer** that is spawned only on demand and
-freed when closed — so idle memory stays low while you still get live updates.
+polling and notifying in the background, and a **viewer** that is spawned on
+demand and — by default — kept resident between opens, so reopening the window
+is instant. Want a leaner footprint? A **"Low memory mode"** preference frees
+the viewer when its window is closed, dropping idle memory to ~20–40 MB — versus
+a couple hundred MB with the viewer resident, or around ½ GB when the web view is
+open — in exchange for a slightly slower reopen.
 
 ## Architecture
 
@@ -18,9 +22,10 @@ A Cargo workspace with three crates:
 | `fodder` | binary | GTK4 + libadwaita viewer: 3-pane UI (feeds / articles / reader) with a sanitized light reader, an optional locked-down WebKit view, discovery-driven subscribe, and a header-bar menu (Preferences / About). |
 
 **Process model.** `fodderd` is the primary process and stays resident. The
-`fodder` viewer is launched on demand and terminated on close. Exactly one
-daemon and one viewer are enforced via a Unix socket in `$XDG_RUNTIME_DIR`,
-which also carries daemon↔viewer IPC.
+`fodder` viewer is launched on demand and, by default, hidden and kept resident
+on close for an instant reopen (or, with **Low memory mode** enabled, terminated
+on close to free its memory). Exactly one daemon and one viewer are enforced via
+a Unix socket in `$XDG_RUNTIME_DIR`, which also carries daemon↔viewer IPC.
 
 **Storage.**
 - Config: `~/.config/fodder/config.toml`

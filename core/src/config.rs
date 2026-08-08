@@ -43,6 +43,11 @@ pub struct Config {
     pub daily_reminder_enabled: bool,
     /// Local time of the daily reminder, as `"HH:MM"` (24-hour).
     pub daily_reminder_time: String,
+    /// Free the viewer process when its window is closed (exit instead of hide)
+    /// to minimize idle memory, at the cost of a cold spawn on the next open.
+    /// Defaults to `false`: the viewer stays resident between opens so reopening
+    /// is instant. Enable on low-RAM systems to reclaim its memory while closed.
+    pub low_memory_mode: bool,
 }
 
 impl Default for Config {
@@ -55,6 +60,7 @@ impl Default for Config {
             notify_new_articles: true,
             daily_reminder_enabled: false,
             daily_reminder_time: DEFAULT_REMINDER_TIME.to_string(),
+            low_memory_mode: false,
         }
     }
 }
@@ -129,6 +135,26 @@ mod tests {
     }
 
     #[test]
+    fn low_memory_mode_defaults_off() {
+        // Defaulting off keeps the viewer resident between opens (performance
+        // default); low-memory teardown is opt-in.
+        assert!(!Config::default().low_memory_mode);
+    }
+
+    #[test]
+    fn load_missing_low_memory_field_defaults_off() {
+        // An older config written before this setting existed must load cleanly
+        // (serde container `default`) with the flag off.
+        let dir = std::env::temp_dir().join("fodder-cfg-test-lowmem-missing");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "poll_interval_minutes = 30\n").unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert!(!cfg.low_memory_mode);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn rejects_below_minimum_on_validate() {
         let cfg = Config {
             poll_interval_minutes: 1,
@@ -170,6 +196,7 @@ mod tests {
             daily_reminder_enabled: true,
             daily_reminder_time: "07:30".to_string(),
             notify_new_articles: false,
+            low_memory_mode: true,
             ..Config::default()
         };
         cfg.save(&path).unwrap();
@@ -180,6 +207,7 @@ mod tests {
         assert!(back.daily_reminder_enabled);
         assert_eq!(back.daily_reminder_time, "07:30");
         assert!(!back.notify_new_articles);
+        assert!(back.low_memory_mode);
         std::fs::remove_dir_all(&dir).ok();
     }
 

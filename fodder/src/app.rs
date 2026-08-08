@@ -77,6 +77,11 @@ pub struct App {
     ctx_article_url: RefCell<Option<String>>,
     ctx_article_read: Cell<bool>,
 
+    /// When set, closing the window exits the process to reclaim its memory
+    /// (mirrors `Config::low_memory_mode`); otherwise closing hides it and keeps
+    /// the process resident for an instant reopen.
+    low_memory: Cell<bool>,
+
     db: DbHandle,
     rt: tokio::runtime::Runtime,
     http: reqwest::Client,
@@ -355,10 +360,33 @@ fn assemble(
         ctx_article: Cell::new(None),
         ctx_article_url: RefCell::new(None),
         ctx_article_read: Cell::new(false),
+        low_memory: Cell::new(
+            paths::config_path()
+                .ok()
+                .map(|p| Config::load(&p).unwrap_or_default().low_memory_mode)
+                .unwrap_or(false),
+        ),
         db,
         rt,
         http,
         cmd_tx,
+    });
+
+    // Closing the window keeps the process resident by default (hide it) for an
+    // instant reopen. The live WebView is deliberately kept too, so returning to
+    // a full-view article is instant rather than a fresh WebKit spawn + reload -
+    // holding its subprocesses is the memory cost this default accepts. Low-memory
+    // mode exits on close instead, freeing everything (its escape hatch for that
+    // WebKit memory mid-session is toggling back to the light reader, which still
+    // destroys the view).
+    let close_app = this.clone();
+    this.window.connect_close_request(move |window| {
+        if close_app.low_memory.get() {
+            glib::Propagation::Proceed
+        } else {
+            window.set_visible(false);
+            glib::Propagation::Stop
+        }
     });
 
     wire_signals(
@@ -1252,6 +1280,20 @@ impl App {
             app.save_config_and_reload(move |c| c.poll_interval_minutes = minutes);
         });
         general.add(&interval);
+
+        let low_memory = adw::SwitchRow::new();
+        low_memory.set_title("Low memory mode");
+        low_memory.set_subtitle("Free the window when closed; reopening is a little slower");
+        low_memory.set_active(cfg.low_memory_mode);
+        let app = self.clone();
+        low_memory.connect_active_notify(move |row| {
+            let on = row.is_active();
+            // Update the live flag so the very next window close honors the new
+            // choice without waiting for a restart.
+            app.low_memory.set(on);
+            app.save_config_and_reload(move |c| c.low_memory_mode = on);
+        });
+        general.add(&low_memory);
 
         // --- Notifications ---
         let notif = adw::PreferencesGroup::new();

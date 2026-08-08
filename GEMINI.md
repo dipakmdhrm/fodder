@@ -67,7 +67,7 @@ Skip new tests only when a change genuinely has no testable behavior (docs, comm
 
 ## Project Overview
 
-**Fodder** is a lightweight RSS/Atom/JSON-Feed reader for Linux desktops (GNOME, KDE, XFCE/Sway). It is built around a small, always-resident **daemon** that polls feeds and sends notifications, and a **viewer** spawned only on demand and freed when closed - so idle memory stays low while updates stay live.
+**Fodder** is a lightweight RSS/Atom/JSON-Feed reader for Linux desktops (GNOME, KDE, XFCE/Sway). It is built around a small, always-resident **daemon** that polls feeds and sends notifications, and a **viewer** spawned on demand and, by default, kept resident between opens for an instant reopen while the daemon polls in the background. A `low_memory_mode` setting (default off) instead frees the viewer when its window is closed, reclaiming its memory at the cost of a cold reopen.
 
 ### Technologies
 
@@ -90,7 +90,7 @@ Skip new tests only when a change genuinely has no testable behavior (docs, comm
 
 Both binaries accept `--version`/`-V`, which prints the shared `fodder_core::version_blurb(...)` (name, version, description, homepage, license) and exits without launching.
 
-**Process model:** `fodderd` is the primary daemon, resident for the graphical session (it exits on logout when the session bus goes away; autostart relaunches it at the next login); `fodder` is spawned on demand and freed on close. Exactly one daemon and one viewer, enforced via the runtime socket (which also carries IPC). Storage: `~/.config/fodder/config.toml` and `~/.local/share/fodder/db.sqlite` (WAL). On a package upgrade (release builds), the resident daemon detects its replaced binary (`fodderd/src/self_update.rs`) and re-execs the new one in place, so the tray survives `apt upgrade`; the deb `prerm` therefore only stops the daemon on removal, not upgrade.
+**Process model:** `fodderd` is the primary daemon, resident for the graphical session (it exits on logout when the session bus goes away; autostart relaunches it at the next login); `fodder` is spawned on demand and, by default, kept resident on close - closing hides the window (keeping the live WebView too) for an instant reopen; `low_memory_mode` (default off) instead frees the process on close. The choice lives viewer-side in `App::low_memory`, no daemon change. Exactly one daemon and one viewer, enforced via the runtime socket (which also carries IPC). Storage: `~/.config/fodder/config.toml` and `~/.local/share/fodder/db.sqlite` (WAL). On a package upgrade (release builds), the resident daemon detects its replaced binary (`fodderd/src/self_update.rs`) and re-execs the new one in place, so the tray survives `apt upgrade`; the deb `prerm` therefore only stops the daemon on removal, not upgrade.
 
 ## Building and Running
 
