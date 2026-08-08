@@ -9,8 +9,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 ### Changed
 - **The viewer now stays resident between opens by default**, so reopening the
   window is instant instead of a cold spawn. Closing hides the window and keeps
-  the process alive (the WebKit view is still torn down on hide, so the resident
-  process doesn't hold its subprocesses).
+  the whole process alive — including an open full-view WebKit article, so
+  returning to it is instant rather than a fresh WebKit spawn and reload.
 
 ### Added
 - **"Low memory mode" setting.** A new General preference (off by default)

@@ -373,15 +373,17 @@ fn assemble(
     });
 
     // Closing the window keeps the process resident by default (hide it) for an
-    // instant reopen; in low-memory mode it exits instead to free the memory. We
-    // still tear down the WebView on hide so the resident process doesn't hold
-    // WebKit's subprocesses (~hundreds of MB).
+    // instant reopen. The live WebView is deliberately kept too, so returning to
+    // a full-view article is instant rather than a fresh WebKit spawn + reload -
+    // holding its subprocesses is the memory cost this default accepts. Low-memory
+    // mode exits on close instead, freeing everything (its escape hatch for that
+    // WebKit memory mid-session is toggling back to the light reader, which still
+    // destroys the view).
     let close_app = this.clone();
     this.window.connect_close_request(move |window| {
         if close_app.low_memory.get() {
             glib::Propagation::Proceed
         } else {
-            close_app.destroy_webview();
             window.set_visible(false);
             glib::Propagation::Stop
         }
