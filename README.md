@@ -6,8 +6,10 @@ XFCE/Sway), written in Rust.
 Fodder is built around a small, always-resident **daemon** that does the
 polling and notifying in the background, and a **viewer** that is spawned on
 demand and — by default — kept resident between opens, so reopening the window
-is instant. Prefer a lower footprint? A **"Low memory mode"** preference frees
-the viewer when its window is closed instead, at the cost of a slower reopen.
+is instant. Want a leaner footprint? A **"Low memory mode"** preference frees
+the viewer when its window is closed, dropping idle memory to ~20–40 MB — versus
+a couple hundred MB with the viewer resident, or around ½ GB when the web view is
+open — in exchange for a slightly slower reopen.
 
 ## Architecture
 
