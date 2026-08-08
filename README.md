@@ -4,10 +4,10 @@ A lightweight RSS / Atom / JSON-Feed reader for Linux desktops (GNOME, KDE,
 XFCE/Sway), written in Rust.
 
 Fodder is built around a small, always-resident **daemon** that does the
-polling and notifying, and a **viewer** that is spawned on demand and kept
-resident between opens for an instant reopen — while the daemon does the live
-polling and notifying in the background. On low-RAM systems, a **"Low memory
-mode"** preference frees the viewer when its window is closed instead.
+polling and notifying in the background, and a **viewer** that is spawned on
+demand and — by default — kept resident between opens, so reopening the window
+is instant. Prefer a lower footprint? A **"Low memory mode"** preference frees
+the viewer when its window is closed instead, at the cost of a slower reopen.
 
 ## Architecture
 
