@@ -6,6 +6,18 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Changed
+- **The viewer now stays resident between opens by default**, so reopening the
+  window is instant instead of a cold spawn. Closing hides the window and keeps
+  the process alive (the WebKit view is still torn down on hide, so the resident
+  process doesn't hold its subprocesses).
+
+### Added
+- **"Low memory mode" setting.** A new General preference (off by default)
+  restores the previous behavior: closing the viewer window frees the process to
+  reclaim its memory, at the cost of a slightly slower reopen. Backed by
+  `low_memory_mode` in `config.toml`.
+
 ## 0.5.0
 
 ### Added
