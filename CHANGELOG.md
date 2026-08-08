@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.6.0
+
 ### Changed
 - **The viewer now stays resident between opens by default**, so reopening the
   window is instant instead of a cold spawn. Closing hides the window and keeps
