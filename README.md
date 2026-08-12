@@ -104,8 +104,10 @@ cross-desktop verification see [docs/cross-desktop-testing.md](docs/cross-deskto
 
 The daemon runs, polls feeds, shows a tray icon, and spawns the viewer on
 demand. The viewer is a working 3-pane reader (add/rename/remove feeds, read
-articles, mark read, refresh). Right-click a feed in the sidebar to rename or
-delete it. The example CLI tools remain handy for scripting.
+articles, mark read, refresh). Refreshing shows progress — the refresh button
+spins while it runs and a toast reports the result (e.g. "3 new articles ·
+2.4s"). Right-click a feed in the sidebar to rename or delete it. The example
+CLI tools remain handy for scripting.
 
 ```bash
 # Run the daemon (foreground, with logs). Shows a tray icon where supported;

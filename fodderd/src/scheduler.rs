@@ -3,7 +3,7 @@
 //! notifications for genuinely-new articles.
 
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use fodder_core::db::{articles, feeds};
@@ -78,7 +78,17 @@ async fn next_wait(ctx: &AppCtx) -> anyhow::Result<Duration> {
     })
 }
 
-/// Poll every feed whose schedule is due now.
+/// Counts from one `poll_feeds` pass, used to report a manual refresh's outcome.
+#[derive(Default)]
+struct PollSummary {
+    /// Genuinely-new articles inserted across all polled feeds.
+    new_articles: usize,
+    /// Feeds whose poll hard-errored (rate-limits/304s don't count).
+    errors: usize,
+}
+
+/// Poll every feed whose schedule is due now. Background work — no refresh
+/// lifecycle messages are sent, so it never raises a toast in an open viewer.
 async fn poll_due(ctx: &AppCtx) -> anyhow::Result<()> {
     let now = Utc::now();
     let due = ctx.with_conn(move |c| feeds::feeds_due(c, now)).await?;
@@ -86,37 +96,63 @@ async fn poll_due(ctx: &AppCtx) -> anyhow::Result<()> {
         return Ok(());
     }
     tracing::info!("polling {} due feed(s)", due.len());
-    poll_feeds(ctx, due).await
+    poll_feeds(ctx, due).await?;
+    Ok(())
 }
 
 /// Force-poll every feed now, regardless of schedule (user-invoked refresh).
+/// Brackets the poll with `RefreshStarted`/`RefreshFinished` so an open viewer
+/// can show a spinner + completion toast.
 async fn poll_all_now(ctx: &AppCtx) -> anyhow::Result<()> {
     let feeds = ctx.with_conn(|c| feeds::list_feeds(c)).await?;
-    if feeds.is_empty() {
-        tracing::info!("refresh: no feeds subscribed");
-        return Ok(());
-    }
-    tracing::info!("refresh: force-polling all {} feed(s)", feeds.len());
-    poll_feeds(ctx, feeds).await
+    let feed_count = feeds.len();
+    tracing::info!("refresh: force-polling all {feed_count} feed(s)");
+    refresh_reporting(ctx, None, feed_count, feeds).await
 }
 
 /// Poll a single feed by id (manual refresh), regardless of schedule.
 async fn poll_one(ctx: &AppCtx, feed_id: i64) -> anyhow::Result<()> {
     let feed = ctx.with_conn(move |c| feeds::get_feed(c, feed_id)).await?;
-    match feed {
-        Some(feed) => poll_feeds(ctx, vec![feed]).await,
-        None => Ok(()),
-    }
+    let feeds: Vec<Feed> = feed.into_iter().collect();
+    refresh_reporting(ctx, Some(feed_id), feeds.len(), feeds).await
 }
 
-/// Poll the given feeds concurrently and store each outcome.
-async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<()> {
+/// Run a user-invoked poll, bracketed by the `RefreshStarted`/`RefreshFinished`
+/// IPC messages (with timing + counts) that drive the viewer's feedback.
+async fn refresh_reporting(
+    ctx: &AppCtx,
+    feed_id: Option<i64>,
+    feed_count: usize,
+    feeds_to_poll: Vec<Feed>,
+) -> anyhow::Result<()> {
+    ctx.send_to_viewer(IpcMessage::RefreshStarted {
+        feed_id,
+        feed_count,
+    });
+    let start = Instant::now();
+    let summary = if feeds_to_poll.is_empty() {
+        PollSummary::default()
+    } else {
+        poll_feeds(ctx, feeds_to_poll).await?
+    };
+    ctx.send_to_viewer(IpcMessage::RefreshFinished {
+        feed_id,
+        new_articles: summary.new_articles,
+        errors: summary.errors,
+        duration_ms: start.elapsed().as_millis() as u64,
+    });
+    Ok(())
+}
+
+/// Poll the given feeds concurrently, store each outcome, and return the
+/// aggregate counts.
+async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<PollSummary> {
     let by_id: HashMap<i64, Feed> = feeds_to_poll.iter().map(|f| (f.id, f.clone())).collect();
 
     let outcomes = ctx.poller.poll_all(feeds_to_poll).await;
     let interval = ctx.config().poll_interval();
     let now = Utc::now();
-    let mut any_new = false;
+    let mut summary = PollSummary::default();
 
     for (feed_id, outcome) in outcomes {
         let Some(feed) = by_id.get(&feed_id) else {
@@ -132,7 +168,7 @@ async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<()
                 let new_count =
                     store_updated(ctx, feed, title, etag, last_modified, items, now + interval)
                         .await?;
-                any_new |= new_count > 0;
+                summary.new_articles += new_count;
             }
             PollOutcome::NotModified => {
                 let next = now + interval;
@@ -154,6 +190,7 @@ async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<()
                     + chrono::Duration::from_std(backoff)
                         .unwrap_or_else(|_| chrono::Duration::hours(6));
                 tracing::warn!("feed {feed_id} error (#{error_count}): {err}");
+                summary.errors += 1;
                 ctx.with_conn(move |c| {
                     feeds::update_feed_error(c, feed_id, &err, error_count, next)
                 })
@@ -162,10 +199,10 @@ async fn poll_feeds(ctx: &AppCtx, feeds_to_poll: Vec<Feed>) -> anyhow::Result<()
         }
     }
 
-    if any_new {
+    if summary.new_articles > 0 {
         ctx.send_to_viewer(IpcMessage::FeedsChanged);
     }
-    Ok(())
+    Ok(summary)
 }
 
 /// Store an updated feed: update the title, insert new articles (deduped),

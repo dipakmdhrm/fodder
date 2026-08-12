@@ -35,6 +35,11 @@ pub struct Target {
 pub struct App {
     window: adw::ApplicationWindow,
     inner_split: adw::NavigationSplitView,
+    /// Wraps the whole UI so refresh-outcome toasts can be surfaced anywhere.
+    toast_overlay: adw::ToastOverlay,
+    /// The "Refresh all feeds" header button; swapped to a spinner while a
+    /// refresh (from any trigger) is in flight.
+    refresh_btn: gtk::Button,
 
     feeds_list: gtk::ListBox,
     articles_list: gtk::ListBox,
@@ -306,7 +311,11 @@ fn assemble(
     outer_split.set_max_sidebar_width(320.0);
     outer_split.set_min_sidebar_width(220.0);
 
-    window.set_content(Some(&outer_split));
+    // Wrap the whole UI in a toast overlay so a completed refresh can surface a
+    // brief "N new articles · 2.4s" toast regardless of which pane has focus.
+    let toast_overlay = adw::ToastOverlay::new();
+    toast_overlay.set_child(Some(&outer_split));
+    window.set_content(Some(&toast_overlay));
 
     let http = reqwest::Client::builder()
         .user_agent(concat!("FodderReader/", env!("CARGO_PKG_VERSION")))
@@ -327,6 +336,8 @@ fn assemble(
     let this = Rc::new(App {
         window,
         inner_split,
+        toast_overlay,
+        refresh_btn: refresh_btn.clone(),
         feeds_list,
         articles_list,
         articles_stack,
@@ -1509,6 +1520,17 @@ impl App {
                 article: self.current_article.get(),
                 webkit: false,
             })),
+            FromDaemon::RefreshStarted => self.set_refreshing(true),
+            FromDaemon::RefreshFinished {
+                new_articles,
+                errors,
+                duration_ms,
+            } => {
+                self.set_refreshing(false);
+                let msg =
+                    fodder_core::refresh::format_refresh_summary(new_articles, errors, duration_ms);
+                self.show_toast(&msg);
+            }
             FromDaemon::Duplicate => {
                 tracing::info!("another viewer is already open; exiting");
                 if let Some(app) = self.window.application() {
@@ -1522,6 +1544,27 @@ impl App {
     }
 
     // --- small helpers ---
+
+    /// Toggle the refresh button between its icon and a spinner, disabling it
+    /// while a refresh is in flight so the in-progress state is unmistakable.
+    fn set_refreshing(&self, on: bool) {
+        if on {
+            let spinner = gtk::Spinner::new();
+            spinner.start();
+            self.refresh_btn.set_child(Some(&spinner));
+            self.refresh_btn.set_sensitive(false);
+        } else {
+            self.refresh_btn.set_sensitive(true);
+            self.refresh_btn.set_icon_name("view-refresh-symbolic");
+        }
+    }
+
+    /// Surface a brief, auto-dismissing toast over the whole UI.
+    fn show_toast(&self, text: &str) {
+        let toast = adw::Toast::new(text);
+        toast.set_timeout(4);
+        self.toast_overlay.add_toast(toast);
+    }
 
     fn clear_reader(&self) {
         self.current_article.set(None);

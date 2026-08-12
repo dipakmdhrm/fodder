@@ -22,6 +22,14 @@ pub enum FromDaemon {
     },
     /// The feed set or articles changed; reload from the DB.
     FeedsChanged,
+    /// A user-invoked refresh started; show in-progress feedback.
+    RefreshStarted,
+    /// A user-invoked refresh finished; show the outcome (counts + duration).
+    RefreshFinished {
+        new_articles: usize,
+        errors: usize,
+        duration_ms: u64,
+    },
     /// The daemon says another viewer already owns the session; we should exit.
     Duplicate,
     /// The connection to the daemon was lost (or never established).
@@ -102,6 +110,17 @@ fn classify(msg: IpcMessage) -> Option<FromDaemon> {
             article_id,
         }),
         IpcMessage::FeedsChanged => Some(FromDaemon::FeedsChanged),
+        IpcMessage::RefreshStarted { .. } => Some(FromDaemon::RefreshStarted),
+        IpcMessage::RefreshFinished {
+            new_articles,
+            errors,
+            duration_ms,
+            ..
+        } => Some(FromDaemon::RefreshFinished {
+            new_articles,
+            errors,
+            duration_ms,
+        }),
         // An error reply to our ViewerHello means a viewer already exists.
         IpcMessage::Error(_) => Some(FromDaemon::Duplicate),
         _ => None,

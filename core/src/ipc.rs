@@ -68,6 +68,22 @@ pub enum IpcMessage {
     },
     /// The feed set or article data changed; the viewer should reload from DB.
     FeedsChanged,
+    /// A user-invoked refresh started. `feed_id` scopes it (`None` = all feeds);
+    /// `feed_count` is how many feeds are being polled. Sent regardless of which
+    /// trigger (viewer button, context menu, or tray) started the refresh, so an
+    /// open viewer can show progress feedback either way.
+    RefreshStarted {
+        feed_id: Option<i64>,
+        feed_count: usize,
+    },
+    /// A user-invoked refresh finished. Carries the outcome counts and wall-clock
+    /// duration so the viewer can report "N new articles · 2.4s" (and any errors).
+    RefreshFinished {
+        feed_id: Option<i64>,
+        new_articles: usize,
+        errors: usize,
+        duration_ms: u64,
+    },
 
     // --- generic replies ---
     Ack,
@@ -156,6 +172,20 @@ mod tests {
                 article_id: Some(9),
             },
             IpcMessage::FeedsChanged,
+            IpcMessage::RefreshStarted {
+                feed_id: None,
+                feed_count: 12,
+            },
+            IpcMessage::RefreshStarted {
+                feed_id: Some(4),
+                feed_count: 1,
+            },
+            IpcMessage::RefreshFinished {
+                feed_id: None,
+                new_articles: 3,
+                errors: 1,
+                duration_ms: 2400,
+            },
             IpcMessage::Ack,
             IpcMessage::Error("boom".into()),
         ];
