@@ -6,6 +6,16 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+### Added
+- **Refresh progress feedback.** Triggering a refresh (the header button, a
+  sidebar right-click, or the tray's "Refresh all feeds") now spins the header
+  refresh button while it runs and raises a toast when it finishes — e.g.
+  *"3 new articles · 2.4s"*, *"Up to date · 1.8s"*, or *"1 new article · 1 error
+  · 0.6s"*. The daemon reports the lifecycle over two new IPC messages
+  (`RefreshStarted`/`RefreshFinished`), so an open viewer shows feedback even
+  when the refresh was started from the tray. Background (scheduled) polls stay
+  silent.
+
 ## 0.6.0
 
 ### Changed

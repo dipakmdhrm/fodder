@@ -76,6 +76,7 @@ pub mod ipc;
 pub mod models;
 pub mod paths;
 pub mod poller;
+pub mod refresh;
 
 pub use config::Config;
 pub use models::{Article, Feed, NewArticle};
