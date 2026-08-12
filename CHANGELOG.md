@@ -6,6 +6,8 @@ pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
 ## Unreleased
 
+## 0.7.0
+
 ### Added
 - **Refresh progress feedback.** Triggering a refresh (the header button, a
   sidebar right-click, or the tray's "Refresh all feeds") now spins the header
