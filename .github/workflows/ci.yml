@@ -11,6 +11,9 @@ jobs:
   check:
     name: fmt + clippy + test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linux
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +28,8 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: linux
 
       - name: Formatting
         run: cargo fmt --all -- --check
@@ -34,6 +39,53 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace
+
+  # Android: Kotlin lint, JVM unit tests, and a debug build.
+  #
+  # Everything here runs on the JVM - no emulator or device. The pure-logic
+  # tests (feed parsing, conditional GET, dedupe, backoff, discovery, the
+  # refresh summary, the HTML reader) plus the Robolectric-backed Room DAO
+  # tests are the Android mirror of the `core` test suite; assembleDebug proves
+  # the whole Kotlin/Compose module still compiles.
+  #
+  # Deliberately unconditional (no path filter) so a required status check
+  # never sits "expected" forever on a PR that touches only one platform.
+  android:
+    name: Android lint + test + debug build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Kotlin lint (ktlint)
+        run: ./gradlew ktlintCheck --no-daemon
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Coverage report (Jacoco, report-only)
+        run: ./gradlew jacocoDebugUnitTestReport --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-coverage
+          path: android/app/build/reports/jacoco/jacocoDebugUnitTestReport/
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Verify the APK exists
+        run: ls -lh app/build/outputs/apk/debug/app-debug.apk
 
   # Build every package (.deb, .rpm, Arch, Flatpak) on each PR so a release tag
   # is just a repeat of an already-validated build. Uses the same reusable

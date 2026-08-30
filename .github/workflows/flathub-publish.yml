@@ -90,7 +90,7 @@ jobs:
           set -euo pipefail
           pip install --quiet aiohttp toml tomlkit
           git clone --depth 1 "$GENERATOR_REPO" /tmp/fbt
-          python /tmp/fbt/cargo/flatpak-cargo-generator.py ./Cargo.lock -o /tmp/cargo-sources.json
+          python /tmp/fbt/cargo/flatpak-cargo-generator.py ./linux/Cargo.lock -o /tmp/cargo-sources.json
           echo "Generated $(python -c 'import json;print(len(json.load(open("/tmp/cargo-sources.json"))))') source entries."
 
       - name: Clone the Flathub app repo
@@ -141,7 +141,7 @@ jobs:
           if ! gh pr view "$BRANCH" --repo "$FLATHUB_REPO" >/dev/null 2>&1; then
             gh pr create --repo "$FLATHUB_REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
               --title "Update to v${VERSION}" \
-              --body "Automated update to v${VERSION}. Manifest repointed to the release tag+commit and cargo-sources.json regenerated from Cargo.lock."
+              --body "Automated update to v${VERSION}. Manifest repointed to the release tag+commit and cargo-sources.json regenerated from linux/Cargo.lock."
           fi
           # Land it on a green Buildbot build. Requires "Allow auto-merge" enabled
           # in the Flathub repo; otherwise merge manually after the build passes.
