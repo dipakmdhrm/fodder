@@ -4,7 +4,34 @@ All notable changes to Fodder Reader are documented here. The format loosely
 follows [Keep a Changelog](https://keepachangelog.com/). The project is
 pre-release (`0.1.0`) and developed in milestones (M1–M6).
 
+This file tracks the **Linux** app (`vX.Y.Z` tags). The Android app releases
+separately on `android-X.Y.Z` tags, with notes generated from the commit range;
+see [docs/ANDROID.md](docs/ANDROID.md).
+
 ## Unreleased
+
+### Added
+- **An Android version of Fodder** lives in `android/`: a standalone Kotlin +
+  Jetpack Compose reader (Android 8.0+) with feed discovery, background refresh
+  through WorkManager, batched per-feed notifications, and the same two reading
+  modes as the desktop — a sanitized light render or the live page in a
+  locked-down WebView. It keeps its own subscriptions and database; there is no
+  sync with the desktop app.
+
+### Changed
+- **The repo now holds two products.** The Rust workspace, packaging, desktop
+  assets, and install scripts moved to `linux/`; the Android app is `android/`.
+  Rust commands run from `linux/` (`cd linux && cargo test --workspace`), and
+  the per-user install is `linux/install.sh`. Nothing about the Linux app's
+  behavior, packaging, or install locations changed.
+- **Releases are now per platform.** A merge touching `linux/` cuts a `vX.Y.Z`
+  release exactly as before; a merge touching `android/` cuts an `android-X.Y.Z`
+  release with a signed APK; a merge touching both cuts both, using the same
+  `release:*` label for the bump size.
+
+### Fixed
+- `rgba_to_argb`/`rgb_to_argb` in the tray use `as_chunks`, clearing a new
+  clippy 1.98 lint that made CI's `-D warnings` fail on unmodified code.
 
 ## 0.7.0
 

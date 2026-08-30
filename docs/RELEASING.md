@@ -1,14 +1,21 @@
 # Releasing Fodder
 
-Releases are built by GitHub Actions. A release builds `.deb`, `.rpm`, an Arch
-package, and Flatpak bundles (x86_64 + arm64, except Arch which is x86_64-only),
-attaches them to a GitHub Release, and updates the self-hosted **apt** and
-**flatpak** repositories on the `gh-pages` branch so existing installs
-auto-update.
+The repo ships two products from one branch, each on its own tag namespace:
+
+| Product | Source | Tag | Workflow | Artifacts |
+|---------|--------|-----|----------|-----------|
+| Linux | `linux/` | `vX.Y.Z` | `release.yml` | `.deb`, `.rpm`, Arch, Flatpak + the self-hosted apt/flatpak repos |
+| Android | `android/` | `android-X.Y.Z` | `release-android.yml` | a signed APK on the GitHub Release |
+
+A Linux release builds `.deb`, `.rpm`, an Arch package, and Flatpak bundles
+(x86_64 + arm64, except Arch which is x86_64-only), attaches them to a GitHub
+Release, and updates the self-hosted **apt** and **flatpak** repositories on the
+`gh-pages` branch so existing installs auto-update.
 
 Releases are cut **automatically on every merge to `main`** — see
-[Automatic releases](#automatic-releases). Pushing a `vX.Y.Z` tag by hand still
-works too, for manual/backfill releases.
+[Automatic releases](#automatic-releases) — for whichever platform the merge
+touched. Pushing a `vX.Y.Z` or `android-X.Y.Z` tag by hand still works too, for
+manual/backfill releases. Android signing setup lives in [ANDROID.md](ANDROID.md).
 
 ## One-time setup
 
@@ -64,21 +71,24 @@ feature PR is the only gate. The `auto-release.yml` workflow:
    - `release:minor` → `X.Y+1.0`
    - *(no label)* → `X.Y.Z+1` (patch, the default)
    - `release:skip` → no release for this merge
-2. **Skips tooling/docs-only merges.** A release is cut only when the merge
-   touches user-facing code — the app crates (`core/`, `fodderd/`, `fodder/`),
-   assets (`data/`), packaging (`packaging/`), or dependencies (`Cargo.toml` /
-   `Cargo.lock`). A merge that changes only `.github/`, `docs/`, `*.md`, or
-   root scripts ships nothing, so it doesn't bump the version. An explicit
-   `release:major`/`release:minor` label forces a release anyway.
-3. Computes the next version from the newest `v*` tag.
-4. Bumps `[workspace.package] version` in `Cargo.toml`, syncs `Cargo.lock`
+2. **Releases only the platform the merge touched**, by looking at whether the
+   merged range changed anything under `linux/` or `android/`. A merge that
+   changes only `.github/`, `docs/`, `*.md`, or root files ships nothing on
+   either platform, so it doesn't bump anything. An explicit
+   `release:major`/`release:minor` label on such a merge forces a **Linux**
+   release anyway (the historical escape hatch).
+3. **Linux**: computes the next version from the newest `v*` tag, bumps
+   `[workspace.package] version` in `linux/Cargo.toml`, syncs `linux/Cargo.lock`
    (`cargo update --workspace`, workspace members only), and stamps
    `CHANGELOG.md` (moves `## Unreleased` to the new version, leaving a fresh
-   empty `## Unreleased`).
-5. Commits `Release vX.Y.Z [skip ci]` to `main` and pushes an annotated
-   `vX.Y.Z` tag.
-6. Invokes `release.yml` (via `workflow_call`, pointed at the new tag) to build
-   and publish exactly as a manual tag push would.
+   empty `## Unreleased`). Commits `Release vX.Y.Z [skip ci]` to `main`, pushes
+   an annotated `vX.Y.Z` tag, and invokes `release.yml` (via `workflow_call`,
+   pointed at the new tag) to build and publish exactly as a manual tag push
+   would.
+4. **Android**: computes the next version from the newest `android-*` tag and
+   pushes an `android-X.Y.Z` tag, then invokes `release-android.yml`. There is
+   nothing to commit — the APK's `versionName`/`versionCode` come from the tag
+   at build time, so the tag is the only version record.
 
 **No release loop.** The bump commit and the tag are pushed with the default
 `GITHUB_TOKEN`, and pushes made with `GITHUB_TOKEN` do not trigger further
@@ -86,8 +96,8 @@ workflow runs. That is also why `auto-release.yml` calls `release.yml` through
 `workflow_call` instead of relying on its `push: tags` trigger — the
 token-pushed tag would not fire it.
 
-So `Cargo.toml`/`Cargo.lock` on `main` always reflect the latest release, and a
-local `cargo build` reports the right version. Curate `CHANGELOG.md` under
+So `linux/Cargo.toml` and `linux/Cargo.lock` on `main` always reflect the latest
+Linux release, and a local `cargo build` reports the right version. Curate `CHANGELOG.md` under
 `## Unreleased` as part of normal PR work; the release stamps it for you.
 
 ## Flathub auto-publish
@@ -123,8 +133,10 @@ the Actions tab (**Flathub Publish** → *Run workflow* → enter the version).
 You rarely need this (merges auto-release), but a hand-pushed tag still works —
 e.g. to re-cut a build or release off-cycle:
 
-1. Bump the version in the workspace `Cargo.toml` (`[workspace.package] version`)
-   and update `CHANGELOG.md`.
+**Linux:**
+
+1. Bump the version in `linux/Cargo.toml` (`[workspace.package] version`) and
+   update `CHANGELOG.md`.
 2. Commit, then tag and push:
    ```bash
    git tag v0.1.0
@@ -134,15 +146,25 @@ e.g. to re-cut a build or release off-cycle:
    you'll have a GitHub Release with all packages, and the apt/flatpak repos on
    `gh-pages` will be updated.
 
+**Android:** nothing to bump — just push the tag.
+
+```bash
+git tag android-0.2.0
+git push origin android-0.2.0
+```
+
 ## Notes / expectations
 
 - **CI** (`ci.yml`) runs `cargo fmt --check`, `cargo clippy -D warnings`, and
-  `cargo test` on every PR.
+  `cargo test` in `linux/`, plus `ktlintCheck`, the JVM unit tests, and
+  `assembleDebug` in `android/`, on every PR. Both jobs run unconditionally, so
+  a required status check is never left "expected" on a single-platform PR.
 - **Arch** is x86_64-only (Arch Linux's official architecture). `.deb`, `.rpm`,
   and Flatpak are dual-arch.
-- The self-hosted **Flatpak** build (`packaging/flatpak/`) fetches crates over
-  the network. The **Flathub** build (`packaging/flatpak/flathub/`) instead
-  builds fully offline from a vendored `cargo-sources.json`; releases keep it
+- The self-hosted **Flatpak** build (`linux/packaging/flatpak/`) fetches crates
+  over the network. The **Flathub** build
+  (`linux/packaging/flatpak/flathub/`) instead builds fully offline from a
+  vendored `cargo-sources.json` and builds with `subdir: linux`; releases keep it
   current automatically via [Flathub auto-publish](#flathub-auto-publish).
 - The multi-arch CI (reprepro apt repo, ostree flatpak repo, GPG in Actions,
   arm64 runners) can't be validated locally — expect to iterate on the first

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose paints the real UI; this only styles the pre-Compose window. -->
+    <style name="Theme.Fodder" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

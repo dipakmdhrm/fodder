@@ -37,6 +37,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       VERSION: ${{ inputs.version }}
+    defaults:
+      run:
+        working-directory: linux
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +53,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: linux
 
       - name: Build release binaries
         run: cargo build --release --workspace --locked
@@ -78,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: deb-${{ matrix.arch }}
-          path: fodder_*.deb
+          path: linux/fodder_*.deb
 
   # .rpm (x86_64 + aarch64), built inside Fedora
   build-rpm:
@@ -91,8 +96,14 @@ jobs:
     container: fedora:latest
     env:
       VERSION: ${{ inputs.version }}
+    defaults:
+      run:
+        working-directory: linux
     steps:
+      # Runs before actions/checkout, when linux/ does not exist yet, so it opts
+      # out of the job-level working-directory.
       - name: Install build tools
+        working-directory: .
         run: |
           # tar + zstd are needed by actions/cache inside the minimal container.
           dnf install -y git rpm-build cargo rust gcc tar zstd \
@@ -111,14 +122,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: rpm-${{ matrix.rpmarch }}
-          workspaces: ". -> rpm-target"
+          workspaces: "linux -> rpm-target"
 
       - name: Build .rpm
         run: |
           mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           SRC=$(mktemp -d)
           mkdir "$SRC/fodder-${VERSION}"
-          cp -r Cargo.toml Cargo.lock core fodderd fodder data LICENSE \
+          cp -r Cargo.toml Cargo.lock core fodderd fodder data ../LICENSE \
             "$SRC/fodder-${VERSION}/"
           tar -czf "rpmbuild/SOURCES/fodder-${VERSION}.tar.gz" -C "$SRC" "fodder-${VERSION}"
 
@@ -135,7 +146,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rpm-${{ matrix.rpmarch }}
-          path: "*.rpm"
+          path: "linux/*.rpm"
 
   # Arch package (x86_64), built inside Arch. Links the system SQLite instead
   # of the bundled copy (see packaging/arch/PKGBUILD) so it survives makepkg's
@@ -145,8 +156,14 @@ jobs:
     container: archlinux:latest
     env:
       VERSION: ${{ inputs.version }}
+    defaults:
+      run:
+        working-directory: linux
     steps:
+      # Runs before actions/checkout, when linux/ does not exist yet, so it opts
+      # out of the job-level working-directory.
       - name: Install build tools
+        working-directory: .
         run: |
           pacman -Syu --noconfirm git base-devel rust sqlite \
             gtk4 libadwaita webkitgtk-6.0
@@ -160,7 +177,7 @@ jobs:
           mkdir -p arch-build
           SRC=$(mktemp -d)
           mkdir "$SRC/fodder-${VERSION}"
-          cp -r Cargo.toml Cargo.lock core fodderd fodder data LICENSE \
+          cp -r Cargo.toml Cargo.lock core fodderd fodder data ../LICENSE \
             "$SRC/fodder-${VERSION}/"
           tar -czf "arch-build/fodder-${VERSION}.tar.gz" -C "$SRC" "fodder-${VERSION}"
 
@@ -174,7 +191,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: arch
-          path: arch-build/*.pkg.tar.zst
+          path: linux/arch-build/*.pkg.tar.zst
 
   # Flatpak bundle + per-arch ostree repo (amd64 + arm64)
   build-flatpak:
@@ -185,6 +202,9 @@ jobs:
           - { runner: ubuntu-latest,    arch: x86_64 }
           - { runner: ubuntu-24.04-arm, arch: aarch64 }
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: linux
     steps:
       - uses: actions/checkout@v4
         with:
@@ -195,8 +215,8 @@ jobs:
       # tag; a cache miss just falls back to a full build).
       - uses: actions/cache@v4
         with:
-          path: .flatpak-builder
-          key: flatpak-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/**', 'Cargo.lock') }}
+          path: linux/.flatpak-builder
+          key: flatpak-${{ matrix.arch }}-${{ hashFiles('linux/packaging/flatpak/**', 'linux/Cargo.lock') }}
           restore-keys: |
             flatpak-${{ matrix.arch }}-
 
@@ -220,8 +240,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak-bundle-${{ matrix.arch }}
-          path: fodder-*.flatpak
+          path: linux/fodder-*.flatpak
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak-repo-${{ matrix.arch }}
-          path: repo
+          path: linux/repo

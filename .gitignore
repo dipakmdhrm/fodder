@@ -1,5 +1,5 @@
-# Rust / Cargo build artifacts
-/target
+# --- Rust / Cargo (linux/) -------------------------------------------------
+/linux/target
 
 # Backup files from rustfmt and editors
 **/*.rs.bk
@@ -9,19 +9,33 @@
 # Debug symbols
 *.pdb
 
+# --- Android / Gradle (android/) -------------------------------------------
+/android/.gradle
+/android/build
+/android/app/build
+/android/local.properties
+/android/.kotlin
+/android/.env
+/android/captures
+
+# Signing material must never be committed; CI decodes it from a secret.
+*.keystore
+*.jks
+
 # Local editor / OS cruft
 /.idea
 /.vscode
+*.iml
 .DS_Store
 
 # Release/packaging build output (produced locally when testing packaging)
-/rpmbuild
-/arch-build
-/gh-pages-dir
-/build-dir
-/.flatpak-builder
-/repo
-/pages
+/linux/rpmbuild
+/linux/arch-build
+/linux/gh-pages-dir
+/linux/build-dir
+/linux/.flatpak-builder
+/linux/repo
+/linux/pages
 *.deb
 *.rpm
 *.pkg.tar.zst

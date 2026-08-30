@@ -3,14 +3,26 @@ name: Auto Release
 # Fully-automatic release on merge to main. The only manual gate is merging the
 # feature PR; once it lands, this workflow cuts a release with no further input.
 #
-# Flow:
+# The repo ships two products from one branch, each with its own tag namespace:
+#
+#   linux/    -> `vX.Y.Z`        -> release.yml         (deb/rpm/Arch/Flatpak)
+#   android/  -> `android-X.Y.Z` -> release-android.yml (signed APK)
+#
+# A merge releases whichever platform it actually touched - both, if it touched
+# both - using the same `release:*` label to pick the bump size for each.
+#
+# Linux flow:
 #   1. Read the merged PR's `release:*` label to pick the bump (default: patch).
 #   2. Compute the next version from the newest `v*` tag.
-#   3. Bump [workspace.package] version in Cargo.toml, sync Cargo.lock, and
-#      stamp CHANGELOG.md (Unreleased -> the new version).
+#   3. Bump [workspace.package] version in linux/Cargo.toml, sync
+#      linux/Cargo.lock, and stamp CHANGELOG.md (Unreleased -> the new version).
 #   4. Commit + push that to main, then create and push the tag.
 #   5. Invoke release.yml (workflow_call) to build + publish, pointing it at the
 #      tag so the build includes the bump commit.
+#
+# Android flow: no file to bump - the APK's versionName/versionCode are derived
+# from the tag at build time - so it only computes the next `android-*` tag,
+# pushes it, and invokes release-android.yml.
 #
 # No release loop: the bump commit and tag are pushed with the default
 # GITHUB_TOKEN, and pushes made with GITHUB_TOKEN do NOT trigger other workflow
@@ -37,6 +49,8 @@ jobs:
       release: ${{ steps.bump.outputs.release }}
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
+      android-release: ${{ steps.bump.outputs.android_release }}
+      android-version: ${{ steps.bump.outputs.android_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +59,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable   # for `cargo update` (Cargo.lock sync)
 
-      - name: Bump version, changelog, and tag
+      - name: Bump versions and push tags
         id: bump
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,7 +74,8 @@ jobs:
           if [ -n "$PR" ]; then
             LABELS=$(gh pr view "$PR" --json labels --jq '.labels[].name' || true)
             if echo "$LABELS" | grep -qx 'release:skip'; then
-              echo "release=false" >> "$GITHUB_OUTPUT"
+              echo "release=false"         >> "$GITHUB_OUTPUT"
+              echo "android_release=false" >> "$GITHUB_OUTPUT"
               echo "### No release: PR #$PR is labeled release:skip" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
@@ -68,70 +83,117 @@ jobs:
             echo "$LABELS" | grep -qx 'release:minor' && { BUMP=minor; EXPLICIT=true; } || true
           fi
 
-          # --- Skip tooling/docs-only merges (no user-facing change) ---------
-          # Release only when the app crates, user-facing assets, packaging, or
-          # dependencies actually change. A merge that touches only .github/,
-          # docs/, or *.md ships nothing, so it shouldn't bump the version. An
-          # explicit release:major/minor label overrides this (forces a release).
+          # --- Which platform actually changed? ------------------------------
+          # Release only the platform a merge touched. A merge that touches only
+          # .github/, docs/, or *.md ships nothing on either platform; an
+          # explicit release:major/minor label still forces a Linux release
+          # (the historical escape hatch for a docs-only version bump).
           BEFORE="${{ github.event.before }}"
+          LINUX_CHANGED=false
+          ANDROID_CHANGED=false
           if echo "$BEFORE" | grep -qE '^0+$'; then
-            APP_CHANGED=true        # unknown range (first push / force-push): don't suppress
-          elif git diff --name-only "$BEFORE" "${{ github.sha }}" \
-                 | grep -qE '^(core|fodderd|fodder|data|packaging)/|^Cargo\.(toml|lock)$'; then
-            APP_CHANGED=true
+            # Unknown range (first push / force-push): don't suppress anything.
+            LINUX_CHANGED=true
+            ANDROID_CHANGED=true
           else
-            APP_CHANGED=false
+            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+            echo "$CHANGED" | grep -qE '^linux/'   && LINUX_CHANGED=true   || true
+            echo "$CHANGED" | grep -qE '^android/' && ANDROID_CHANGED=true || true
           fi
-          if [ "$APP_CHANGED" != "true" ] && [ "$EXPLICIT" != "true" ]; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
+          if [ "$LINUX_CHANGED" != "true" ] && [ "$ANDROID_CHANGED" != "true" ] \
+             && [ "$EXPLICIT" = "true" ]; then
+            LINUX_CHANGED=true
+          fi
+
+          if [ "$LINUX_CHANGED" != "true" ] && [ "$ANDROID_CHANGED" != "true" ]; then
+            echo "release=false"         >> "$GITHUB_OUTPUT"
+            echo "android_release=false" >> "$GITHUB_OUTPUT"
             echo "### No release: only tooling/docs changed (no user-facing change)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          # --- Compute the next version from the newest v* tag ---------------
-          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -1)
-          LATEST=${LATEST:-v0.0.0}
-          IFS=. read -r MA MI PA <<< "${LATEST#v}"
-          case "$BUMP" in
-            major) MA=$((MA + 1)); MI=0; PA=0 ;;
-            minor) MI=$((MI + 1)); PA=0 ;;
-            patch) PA=$((PA + 1)) ;;
-          esac
-          VER="${MA}.${MI}.${PA}"
-          TAG="v${VER}"
-          echo "Releasing ${TAG} (${BUMP}) from ${LATEST}"
-
-          # --- Apply the bump ------------------------------------------------
-          # Only the version line inside [workspace.package]; the crates inherit
-          # it via `version.workspace = true`.
-          sed -i '/^\[workspace\.package\]/,/^\[/ s/^version = ".*"/version = "'"$VER"'"/' Cargo.toml
-          # Sync the three workspace members in Cargo.lock without touching any
-          # dependency versions, so `cargo build --locked` still passes.
-          cargo update --workspace
-          # Stamp the changelog: the current "## Unreleased" notes become the new
-          # version's section, and a fresh empty "## Unreleased" is left on top.
-          if grep -qx '## Unreleased' CHANGELOG.md; then
-            awk -v ver="$VER" '
-              { print }
-              /^## Unreleased$/ && !done { print ""; print "## " ver; done = 1 }
-            ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
-          fi
-
-          # --- Commit, tag, push --------------------------------------------
-          # Pushed with GITHUB_TOKEN, so neither the branch push nor the tag push
-          # retriggers a workflow (no release loop). [skip ci] is belt-and-braces.
+          # Both platforms push with GITHUB_TOKEN, so neither the branch push nor
+          # the tag pushes retrigger a workflow (no release loop). That is also
+          # why the release workflows are invoked via workflow_call below rather
+          # than relying on their `push: tags` triggers.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock CHANGELOG.md
-          git commit -m "Release ${TAG} [skip ci]"
-          git tag -a "$TAG" -m "Release ${TAG}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-          git push origin "$TAG"
 
-          echo "release=true"    >> "$GITHUB_OUTPUT"
-          echo "version=${VER}"  >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}"      >> "$GITHUB_OUTPUT"
-          echo "### Released ${TAG} (${BUMP})" >> "$GITHUB_STEP_SUMMARY"
+          # --- Linux: bump, stamp, commit, tag -------------------------------
+          if [ "$LINUX_CHANGED" = "true" ]; then
+            LATEST=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            LATEST=${LATEST:-v0.0.0}
+            IFS=. read -r MA MI PA <<< "${LATEST#v}"
+            case "$BUMP" in
+              major) MA=$((MA + 1)); MI=0; PA=0 ;;
+              minor) MI=$((MI + 1)); PA=0 ;;
+              patch) PA=$((PA + 1)) ;;
+            esac
+            VER="${MA}.${MI}.${PA}"
+            TAG="v${VER}"
+            echo "Releasing ${TAG} (${BUMP}) from ${LATEST}"
+
+            # Only the version line inside [workspace.package]; the crates
+            # inherit it via `version.workspace = true`.
+            sed -i '/^\[workspace\.package\]/,/^\[/ s/^version = ".*"/version = "'"$VER"'"/' \
+              linux/Cargo.toml
+            # Sync the three workspace members in Cargo.lock without touching any
+            # dependency versions, so `cargo build --locked` still passes.
+            cargo update --manifest-path linux/Cargo.toml --workspace
+            # Stamp the changelog: the current "## Unreleased" notes become the
+            # new version's section, and a fresh empty "## Unreleased" stays on
+            # top. CHANGELOG.md tracks the Linux app; Android release notes are
+            # generated from the commit range by release-android.yml.
+            if grep -qx '## Unreleased' CHANGELOG.md; then
+              awk -v ver="$VER" '
+                { print }
+                /^## Unreleased$/ && !done { print ""; print "## " ver; done = 1 }
+              ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+            fi
+
+            # [skip ci] is belt-and-braces on top of the GITHUB_TOKEN rule above.
+            git add linux/Cargo.toml linux/Cargo.lock CHANGELOG.md
+            git commit -m "Release ${TAG} [skip ci]"
+            git tag -a "$TAG" -m "Release ${TAG}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            git push origin "$TAG"
+
+            echo "release=true"   >> "$GITHUB_OUTPUT"
+            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+            echo "tag=${TAG}"     >> "$GITHUB_OUTPUT"
+            echo "### Released ${TAG} (${BUMP})" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # --- Android: tag only ---------------------------------------------
+          # There is no version file to bump: the APK takes versionName and
+          # versionCode from the tag at build time (see release-android.yml), so
+          # the tag is the single source of truth.
+          if [ "$ANDROID_CHANGED" = "true" ]; then
+            ALATEST=$(git tag -l 'android-*' --sort=-v:refname | head -1)
+            if [ -z "$ALATEST" ]; then
+              AVER="0.1.0"          # first Android release
+            else
+              IFS=. read -r AMA AMI APA <<< "${ALATEST#android-}"
+              case "$BUMP" in
+                major) AMA=$((AMA + 1)); AMI=0; APA=0 ;;
+                minor) AMI=$((AMI + 1)); APA=0 ;;
+                patch) APA=$((APA + 1)) ;;
+              esac
+              AVER="${AMA}.${AMI}.${APA}"
+            fi
+            ATAG="android-${AVER}"
+            echo "Releasing ${ATAG} (${BUMP}) from ${ALATEST:-none}"
+            git tag -a "$ATAG" -m "Release ${ATAG}"
+            git push origin "$ATAG"
+
+            echo "android_release=true"    >> "$GITHUB_OUTPUT"
+            echo "android_version=${AVER}" >> "$GITHUB_OUTPUT"
+            echo "### Released ${ATAG} (${BUMP})" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "android_release=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # Build + publish via the same pipeline a manual tag push uses. Pointed at the
   # new tag so it builds the version-bump commit, not the merge commit.
@@ -143,3 +205,15 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
       ref: ${{ needs.prepare.outputs.tag }}
     secrets: inherit
+
+  # Same idea for Android: build + sign the APK and attach it to a GitHub
+  # Release. Skipped entirely when the merge didn't touch android/.
+  release-android:
+    needs: prepare
+    if: needs.prepare.outputs.android-release == 'true'
+    uses: ./.github/workflows/release-android.yml
+    with:
+      version: ${{ needs.prepare.outputs.android-version }}
+    secrets: inherit
+    permissions:
+      contents: write

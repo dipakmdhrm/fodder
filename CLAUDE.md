@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git workflow - IMPORTANT
 
-**Never push directly to `main`.** Always work on a feature branch and open a pull request so the GitHub Actions CI pipeline (fmt + clippy + tests) can run before merging.
+**Never push directly to `main`.** Always work on a feature branch and open a pull request so the GitHub Actions CI pipeline (Rust fmt + clippy + tests, and the Android lint/test/debug-build job) can run before merging.
 
 1. Create a branch from the latest `main`:
    ```bash
@@ -21,17 +21,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5. **Never merge a PR - merging is always the user's decision and action**, even when CI
    is green and all review comments are addressed. Stop when the PR is ready and report
    its URL.
-6. After the user merges, a release is cut **automatically**: `auto-release.yml`
-   (on push to `main`) reads the merged PR's `release:*` label for the bump size
-   (default patch; `release:skip` opts out), bumps `Cargo.toml`/`Cargo.lock`,
-   stamps `CHANGELOG.md`, tags `vX.Y.Z`, and hands off to `release.yml`. It
-   **skips tooling/docs-only merges** — a release fires only when the app crates
-   (`core/`/`fodderd/`/`fodder/`), assets (`data/`), packaging, or deps
-   (`Cargo.toml`/`Cargo.lock`) change; a merge touching only `.github/`, `docs/`,
-   `*.md`, or root scripts ships nothing and is skipped (a `release:*` bump label
-   forces a release anyway). So label the PR `release:minor`/`release:major` when
-   appropriate, or `release:skip` to merge without releasing. A manual `vX.Y.Z`
-   tag push still works for off-cycle releases. See `docs/RELEASING.md`.
+6. After the user merges, a release is cut **automatically** for whichever
+   platform the merge touched. `auto-release.yml` (on push to `main`) reads the
+   merged PR's `release:*` label for the bump size (default patch;
+   `release:skip` opts out), then:
+   - a merge touching `linux/` bumps `linux/Cargo.toml`/`linux/Cargo.lock`,
+     stamps `CHANGELOG.md`, tags `vX.Y.Z`, and hands off to `release.yml`;
+   - a merge touching `android/` tags `android-X.Y.Z` and hands off to
+     `release-android.yml` (nothing to bump — the APK's
+     `versionName`/`versionCode` come from the tag);
+   - a merge touching both cuts both.
+
+   A merge touching only `.github/`, `docs/`, `*.md`, or root files ships
+   nothing and is skipped (an explicit `release:major`/`release:minor` label
+   forces a **Linux** release anyway). So label the PR
+   `release:minor`/`release:major` when appropriate, or `release:skip` to merge
+   without releasing. Manual `vX.Y.Z` / `android-X.Y.Z` tag pushes still work
+   for off-cycle releases. See `docs/RELEASING.md` and `docs/ANDROID.md`.
 
 **One PR per prompt:** create exactly one pull request per user request, even when the
 work is large. Use multiple commits on the same branch for reviewability instead of
@@ -46,7 +52,7 @@ merges, under any circumstances.
 
 Whenever a change affects user-facing behavior, features, architecture, commands, conventions, or test boundaries, update the relevant docs **in the same PR** so they never drift from the code:
 
-- `README.md` - user-facing features, install, and usage
+- `README.md` - user-facing features, install, and usage, for **both** platforms
 - `CHANGELOG.md` - move the relevant milestone/feature into a shipped section
 - `CLAUDE.md` and `GEMINI.md` - architecture, commands, conventions, and test-coverage boundaries
 
@@ -60,8 +66,9 @@ For every change, add or update tests when doing so is meaningful - treat it as 
 
 - New or changed logic with a testable contract (parsing, decisions, data transforms, DB queries, HTTP request/response handling) -> add or update unit tests covering the new behavior and its edge cases.
 - Fixing a bug -> add a test that fails without the fix, so it can't silently regress.
-- When the meaningful logic is tangled with hard-to-test platform code (GTK4 widgets, the tokio<->glib bridge), **extract the pure logic into a standalone function in `core` and test that** - e.g. feed discovery/parsing, conditional-GET classification, dedupe hashing, IPC framing, and the HTML->Pango reader all live as pure functions with unit tests, while the GTK UI in `fodder/` is not unit-tested.
-- Run the suite before opening a PR: `cargo test --workspace` (plus `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`, which CI enforces).
+- When the meaningful logic is tangled with hard-to-test platform code (GTK4 widgets, the tokio<->glib bridge, Android ViewModels/Compose), **extract the pure logic into a standalone function in `core` (or, on Android, a plain class/top-level function) and test that** - e.g. feed discovery/parsing, conditional-GET classification, dedupe hashing, IPC framing, and the HTML->Pango reader all live as pure functions with unit tests, while the GTK UI in `fodder/` is not unit-tested.
+- Run the suite before opening a PR: in `linux/`, `cargo test --workspace` (plus `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`); in `android/`, `./gradlew ktlintCheck testDebugUnitTest`. CI enforces all of them.
+- **Porting rule:** when you change a rule that both platforms implement (feed parsing, dedupe, conditional-GET classification, backoff, the refresh summary, HTML sanitizing), change it on both sides in the same PR and update both tests. Each Kotlin port names its Rust counterpart in a KDoc comment — grep for `core/src/` in `android/` to find them.
 
 Skip new tests only when a change genuinely has no testable behavior (docs, comments, pure formatting, workflow YAML, trivial constant tweaks) - and say so briefly rather than silently omitting them.
 
@@ -69,7 +76,17 @@ Skip new tests only when a change genuinely has no testable behavior (docs, comm
 
 ## What this repo is
 
-A Cargo workspace (Rust, edition 2021) for **Fodder**, a lightweight RSS/Atom/JSON-Feed reader for Linux desktops. Three crates:
+Two independent apps for **Fodder**, a lightweight RSS/Atom/JSON-Feed reader, in one repo:
+
+```
+linux/     the Rust Cargo workspace, packaging, desktop assets, install scripts
+android/   the Kotlin + Jetpack Compose app (Gradle)
+docs/ .github/ README.md CHANGELOG.md   shared
+```
+
+They share a design and a set of behavioral rules, **not code**: each keeps its own subscriptions and database, and there is no sync between them. The Android app deliberately reimplements the pure logic that `linux/core` has in Rust; every ported Kotlin file names its Rust counterpart, and both sides carry equivalent tests. Releases are independent (`vX.Y.Z` vs `android-X.Y.Z`).
+
+### `linux/` - a Cargo workspace (Rust, edition 2021) with three crates:
 
 - `core/` (`fodder-core`) - shared library: models, config, SQLite store + migrations, HTTP poller, feed discovery, IPC protocol, autostart, XDG paths. All the pure/testable logic lives here.
 - `fodderd/` - the **headless daemon** (tokio, no GTK): poll loop, system-tray icon, desktop notifications, the shared SQLite writer, and the single-instance IPC socket. It spawns the viewer on demand.
@@ -79,11 +96,18 @@ A Cargo workspace (Rust, edition 2021) for **Fodder**, a lightweight RSS/Atom/JS
 
 **Storage:** config `~/.config/fodder/config.toml` (TOML), database `~/.local/share/fodder/db.sqlite` (SQLite, WAL). Paths resolved via `directories` in `core/src/paths.rs`.
 
+### `android/` - a Gradle project, `minSdk` 26 / `compileSdk` 35
+
+A single `:app` module, Kotlin + Compose + Material 3, Room for storage, OkHttp for fetching, WorkManager for the background poll. No daemon, no tray, no IPC: one process owns everything. Application id `io.github.dipakmdhrm.fodder`. Versions come from the git tag at build time, so there is no version file to bump.
+
 ---
 
 ## Commands
 
+All Rust commands run from `linux/`, all Gradle commands from `android/`.
+
 ```bash
+# --- linux/ ---------------------------------------------------------------
 # Build / test the whole workspace
 cargo build --workspace
 cargo test --workspace
@@ -107,6 +131,13 @@ cargo run -p fodder
 cargo run -p fodderd --example ctl -- ping | open | refresh | list | rm <id> \
                                       | subscribe <url> <title> | autostart on|off|status | reload
 cargo run -p fodder-core --example poll -- <url>       # exercise discovery + a real conditional GET
+
+# --- android/ -------------------------------------------------------------
+./gradlew testDebugUnitTest        # JVM unit tests (Robolectric for the DAO tests)
+./gradlew ktlintCheck              # lint; ktlintFormat fixes most findings
+./gradlew jacocoDebugUnitTestReport  # coverage, report-only (CI uploads it)
+./gradlew assembleDebug            # app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 **Dev gotcha:** `cargo run -p fodderd` only builds the daemon, but the daemon spawns the
@@ -114,13 +145,13 @@ viewer by launching the **`target/debug/fodder`** binary by path. After changing
 code, run `cargo build --workspace` (or `./install.sh`) first, or the daemon will spawn a
 **stale** viewer.
 
-**Packaging / release** lives in `packaging/` and `.github/workflows/`; see `docs/RELEASING.md`. The four package builds (`.deb`, `.rpm`, Arch, Flatpak) live in one reusable workflow, `build-packages.yml` (which takes a `version` and an optional `ref` to check out), that both `ci.yml` (on every PR, so a tag is just a repeat of an already-green build) and `release.yml` (on a `v*` tag **or** `workflow_call`, which then signs + publishes the apt/flatpak repos and cuts the GitHub Release) call. Releases are cut **automatically on merge to `main`** by `auto-release.yml`: it derives the next version from the newest tag and the merged PR's `release:*` label, bumps `Cargo.toml`/`Cargo.lock`, stamps `CHANGELOG.md`, commits + tags, and invokes `release.yml` pointed at the new tag. No release loop, because it pushes with `GITHUB_TOKEN` (whose pushes don't retrigger workflows) and calls `release.yml` via `workflow_call` rather than the token-pushed tag. The Arch build links the **system** SQLite (its PKGBUILD drops rusqlite's `bundled` feature) because makepkg's hardening link flags break the vendored static SQLite; the deb/rpm/flatpak/dev builds still bundle it. Per-user install without packaging: `./install.sh` / `./uninstall.sh [--purge]`. Once the app is live on Flathub, `flathub-publish.yml` (invoked by `release.yml`, so it fires for both auto-releases and manual tags) regenerates `cargo-sources.json`, repoints the Flathub manifest at the new tag+commit, and opens an auto-merging update PR to `flathub/io.github.dipakmdhrm.Fodder` — dormant until the repo variable `FLATHUB_AUTOPUBLISH=true` and the `FLATHUB_TOKEN` secret are set (see `docs/RELEASING.md`).
+**Packaging / release** lives in `linux/packaging/` and `.github/workflows/`; see `docs/RELEASING.md`. The four package builds (`.deb`, `.rpm`, Arch, Flatpak) live in one reusable workflow, `build-packages.yml` (which takes a `version` and an optional `ref` to check out), that both `ci.yml` (on every PR, so a tag is just a repeat of an already-green build) and `release.yml` (on a `v*` tag **or** `workflow_call`, which then signs + publishes the apt/flatpak repos and cuts the GitHub Release) call. Releases are cut **automatically on merge to `main`** by `auto-release.yml`: it derives the next version from the newest tag and the merged PR's `release:*` label, bumps `linux/Cargo.toml`/`linux/Cargo.lock`, stamps `CHANGELOG.md`, commits + tags, and invokes `release.yml` pointed at the new tag; a merge under `android/` instead pushes an `android-X.Y.Z` tag and invokes `release-android.yml`, which decodes the signing keystore from repository secrets, builds a signed APK, and attaches it to a GitHub Release (see `docs/ANDROID.md`). No release loop, because it pushes with `GITHUB_TOKEN` (whose pushes don't retrigger workflows) and calls `release.yml` via `workflow_call` rather than the token-pushed tag. The Arch build links the **system** SQLite (its PKGBUILD drops rusqlite's `bundled` feature) because makepkg's hardening link flags break the vendored static SQLite; the deb/rpm/flatpak/dev builds still bundle it. Per-user install without packaging: `linux/install.sh` / `linux/uninstall.sh [--purge]`. `ci.yml` also runs an Android job (ktlint + JVM tests + `assembleDebug`) on every PR; both jobs are unconditional so a required check is never stuck "expected" on a single-platform PR. Once the app is live on Flathub, `flathub-publish.yml` (invoked by `release.yml`, so it fires for both auto-releases and manual tags) regenerates `cargo-sources.json`, repoints the Flathub manifest at the new tag+commit, and opens an auto-merging update PR to `flathub/io.github.dipakmdhrm.Fodder` — dormant until the repo variable `FLATHUB_AUTOPUBLISH=true` and the `FLATHUB_TOKEN` secret are set (see `docs/RELEASING.md`).
 
-**Flathub submission** artifacts live in `packaging/flatpak/flathub/` (separate from the self-hosted `packaging/flatpak/` manifest, which curls rustup and builds online). The Flathub manifest builds **fully offline** as Flathub's workers require: Rust comes from the `org.freedesktop.Sdk.Extension.rust-stable` SDK extension (no rustup), and every crate is vendored via `cargo-sources.json` (regenerate with `flatpak-cargo-generator.py Cargo.lock` whenever deps change) with `CARGO_NET_OFFLINE=true`. Sources are pinned to a git **tag + commit** — bump these to the release that contains `data/metainfo/…` before submitting. The AppStream metainfo is `data/metainfo/io.github.dipakmdhrm.Fodder.metainfo.xml` (validate with `appstreamcli validate`); its `<release>` list and the screenshot URL must be kept current. Lint the manifest/repo with `flatpak-builder-lint` (portals need **no** `--talk-name`; `fallback-x11` needs `--share=ipc`).
+**Flathub submission** artifacts live in `linux/packaging/flatpak/flathub/` (separate from the self-hosted `linux/packaging/flatpak/` manifest, which curls rustup and builds online). Both build from the `linux/` workspace: the self-hosted one because its `path: ../..` source now resolves there, the Flathub one via `subdir: linux` on its module (`CARGO_HOME` is absolute, so the vendored crate set still resolves from the source root). The Flathub manifest builds **fully offline** as Flathub's workers require: Rust comes from the `org.freedesktop.Sdk.Extension.rust-stable` SDK extension (no rustup), and every crate is vendored via `cargo-sources.json` (regenerate with `flatpak-cargo-generator.py linux/Cargo.lock` whenever deps change) with `CARGO_NET_OFFLINE=true`. Sources are pinned to a git **tag + commit** — the current pin predates the `linux/` split, so it must be moved to a tag that contains the new layout before any submission. The AppStream metainfo is `linux/data/metainfo/io.github.dipakmdhrm.Fodder.metainfo.xml` (validate with `appstreamcli validate`); its `<release>` list and the screenshot URL must be kept current. Lint the manifest/repo with `flatpak-builder-lint` (portals need **no** `--talk-name`; `fallback-x11` needs `--share=ipc`).
 
 ---
 
-## Architecture
+## Architecture (Linux)
 
 ### `core` (`fodder-core`)
 
@@ -159,7 +190,39 @@ code, run `cargo build --workspace` (or `./install.sh`) first, or the daemon wil
 
 ---
 
+---
+
+## Architecture (Android)
+
+One `:app` module, no daemon and no IPC - a single process owns the database, the poller, and the UI.
+
+**Application + DI** (`FodderApp.kt`): `FodderApp` owns an `AppContainer` (manual dependency container - deliberately no Hilt/Koin at this size) holding the Room database, the `SettingsStore`, one shared `OkHttpClient` (with the `FodderReader/<version>` User-Agent the desktop also sends), and the `FeedRepository`. ViewModels get their dependencies through the shared `appViewModelFactory` (`viewModelFactory { initializer { ... } }` reading the app off `APPLICATION_KEY`) rather than casting `application`. `AppContainer.trackSettings()` keeps the poll interval and the notification toggle the poller reads in sync with DataStore, so a preference change takes effect without a restart.
+
+**Storage** (`data/db/`): Room, one file `fodder.db`. `FeedEntity`/`ArticleEntity` mirror `core/src/models.rs`, with two differences that are deliberate: timestamps are epoch millis rather than RFC 3339 text, and migrations use Room's machinery rather than the desktop's `PRAGMA user_version` runner (which exists because a daemon and a viewer share that file; here one process owns it). **Dedupe is `OnConflictStrategy.IGNORE` against the unique `(feedId, guid)` index** - `insertAll` returns `-1` for rows that already existed, so callers count genuinely-new articles and a seen item never re-notifies. That is the exact role `INSERT OR IGNORE` plays on the desktop.
+
+**Polling** (`data/FeedRepository.kt`): the Android counterpart of `fodderd/src/scheduler.rs`, and the same outcome handling - `Modified` inserts and stores fresh validators, `NotModified`/`RateLimited` reschedule **without** touching validators, `Error` records the message and backs off. A feed's title is filled from the feed document only when the local one is blank, so a rename is never clobbered. `now` and `pollSpacing` are constructor-injected so the workflow is exercisable without a clock or a settings store.
+
+**Background refresh** (`work/PollWorker.kt`): a WorkManager `PeriodicWorkRequest` with a CONNECTED constraint, enqueued uniquely and updated (not restarted) when the interval setting changes. Two limits worth stating plainly and repeating to users: WorkManager will not run periodic work more often than **every 15 minutes** (the desktop config allows 5), and Doze can delay a run well past its window. Delivery is best-effort; pull-to-refresh is the way to force a poll. Notifications (`work/Notifier.kt`) are batched one per feed, matching `fodderd/src/notify.rs`, and a tap deep-links into the article through `MainActivity.EXTRA_ARTICLE_ID`.
+
+**UI** (`ui/`): the desktop's three panes become three destinations (`ui/nav/Routes.kt`) - feeds, articles, reader - plus settings. The feed list bolds unread feeds and carries the same context menu as the desktop sidebar (Refresh / Mark all as read / Rename / Delete). The reader has the same two modes: the sanitized light render, or the live page in a WebView with JavaScript off and no DOM storage, which is the phone's version of the desktop's locked-down WebKit view.
+
+**Ported pure logic.** Each of these names its Rust counterpart in a KDoc comment; change one and change the other in the same PR:
+
+| Kotlin | Rust |
+|--------|------|
+| `data/feed/FeedParser.kt` | `core/src/poller/mod.rs::parse_items` (jsoup XML + kotlinx.serialization instead of `feed-rs`) |
+| `data/feed/Dedupe.kt` | `core/src/poller/dedupe.rs` |
+| `data/feed/Discovery.kt` | `core/src/discovery.rs` |
+| `data/http/ConditionalGet.kt` | `core/src/poller/http.rs` |
+| `data/http/Backoff.kt` | `core/src/poller/mod.rs::backoff_next` |
+| `work/RefreshSummary.kt` | `core/src/refresh.rs` (hyphen separator instead of a middle dot) |
+| `reader/HtmlToAnnotated.kt` | `fodder/src/reader.rs` (jsoup `Safelist` instead of `ammonia`) |
+
+---
+
 ## Test coverage boundaries
+
+### Linux
 
 Tests live next to the code in `core/` (plus one integration file), and the daemon has a couple of pure-logic tests. GTK UI is not unit-tested; pure logic is extracted into `core`.
 
@@ -182,3 +245,17 @@ Tests live next to the code in `core/` (plus one integration file), and the daem
 - **`fodderd/src/tray.rs`** - the pure tray helpers: `rgba_to_argb`/`rgb_to_argb` channel reordering and that the embedded PNGs decode to correctly-sized pixmaps. The `ksni` wiring and the `wait_for_session_end` D-Bus watch are platform glue, not unit-tested (exercised manually via the running daemon + `gdbus`).
 
 The GTK4 widget code in `fodder/src/app.rs`, the tokio<->glib bridge, and the daemon's async task wiring are **not** unit-tested; the daemon's IPC/lifecycle behavior is exercised manually via the `ctl` example and isolated shell runs.
+
+### Android
+
+All tests are JVM tests under `android/app/src/test/` - no emulator, so CI needs no device. They intentionally mirror the Rust suites named above, so a rule that changes on one platform has a failing test on the other if it is missed.
+
+- **`FeedParserTest`** - RSS title + items, `<content:encoded>` preferred over `<description>`, Atom entries with `rel="alternate"` link preference, JSON Feed, the hashed-guid fallback being stable across parses, non-feed HTML/JSON parsing to null, and the RFC 3339 / RFC 822 date forms agreeing on the same instant.
+- **`DedupeTest`** - id-when-present, SHA-256 link+title fallback (deterministic, idempotent, field boundaries kept distinct by the separator).
+- **`ConditionalGetTest`** - against `MockWebServer`, the Android counterpart of `core/tests/conditional_get.rs`: conditional headers actually sent, 304, validator capture, 429 with seconds, 503 without a hint, non-2xx to error, plus `parseRetryAfter` for seconds / HTTP-date / past-date-clamps-to-zero / garbage.
+- **`BackoffAndSummaryTest`** - backoff growth and the six-hour cap (including `Int.MAX_VALUE` and negative counts), and every branch of `formatRefreshSummary`.
+- **`DiscoveryTest`** - multi-candidate extraction with relative-href resolution, JSON-feed recognition, non-feed alternates ignored, MIME-with-charset and rel-list matching.
+- **`HtmlToAnnotatedTest`** - scripts/styles/iframes stripped, formatting and headings converted, entities decoded, safe links kept and `javascript:` hrefs dropped.
+- **`ArticleDaoTest`** (Robolectric, in-memory Room) - the `(feedId, guid)` dedupe returning no new ids on re-poll, the same guid in two feeds staying two articles, cascade delete, unread counts across mark-read/unread and mark-all, success clearing the error while storing validators, and `reschedule` preserving validators. It runs on a plain `Application`, not `FodderApp`, so booting it does not schedule WorkManager.
+
+ViewModels, Compose UI, `PollWorker`, `Notifier`, and `AppContainer` are **not** unit-tested - they need the Android framework or the Compose test harness. The established pattern is the same as on the desktop: pull the decidable logic out into a plain function or a constructor-injected class (`FeedRepository` takes its clock and poll spacing as parameters for exactly this reason) and test that.

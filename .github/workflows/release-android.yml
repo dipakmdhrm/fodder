@@ -1,0 +1,109 @@
+name: Release Android
+
+# Builds and signs the Android APK and attaches it to a GitHub Release.
+#
+# Two entry points, mirroring release.yml on the Linux side:
+#   - a manual `android-X.Y.Z` tag push (off-cycle release), or
+#   - a workflow_call from auto-release.yml when a merge touched android/.
+#
+# The tag is the only source of version truth: versionName is the tag without
+# its `android-` prefix, and versionCode is derived from it, so there is no
+# version file in android/ to keep in sync.
+#
+# One-time setup (see docs/ANDROID.md):
+#   1. Generate a release keystore locally - it is NEVER committed:
+#        keytool -genkeypair -v -keystore fodder.keystore -alias fodder \
+#          -keyalg RSA -keysize 4096 -validity 10000
+#   2. Add three repository secrets:
+#        ANDROID_KEYSTORE_BASE64    base64 -w 0 fodder.keystore
+#        ANDROID_KEYSTORE_PASSWORD  the store password
+#        ANDROID_KEY_PASSWORD       the key password
+#   The key alias is hardcoded as `fodder` (not sensitive).
+
+on:
+  push:
+    tags:
+      - 'android-*'
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version, no android- prefix (e.g. 0.1.0).'
+        required: true
+        type: string
+
+jobs:
+  build-apk:
+    name: Build + publish signed APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On a workflow_call the caller has just pushed the tag; check it out
+          # explicitly so the build matches the tag rather than the branch head.
+          ref: ${{ inputs.version && format('android-{0}', inputs.version) || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Derive version name and code
+        id: version
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.version || '' }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#android-}"
+          fi
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$VERSION' is not a X.Y.Z version" >&2
+            exit 1
+          fi
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          # Monotonic as long as minor/patch stay below 100, which matches the
+          # semver bumps auto-release.yml produces.
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))" >> "$GITHUB_OUTPUT"
+
+      - name: Decode the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set - see docs/ANDROID.md" >&2
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/fodder.keystore
+
+      - name: Build the release APK
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: fodder
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Name the APK after the release
+        run: |
+          mv android/app/build/outputs/apk/release/app-release.apk \
+             "fodder-android-${{ steps.version.outputs.name }}.apk"
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f android/fodder.keystore
+
+      - name: Publish the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ steps.version.outputs.name }}
+          name: "Android ${{ steps.version.outputs.name }}"
+          files: fodder-android-*.apk
+          generate_release_notes: true
