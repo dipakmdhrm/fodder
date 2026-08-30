@@ -11,6 +11,9 @@
 #   * Sources are pinned to a git tag + commit, not a local dir.
 #
 # Pinned to a released tag + commit that contains the metainfo and this manifest.
+# NOTE: the pin below predates the linux/ + android/ split, so it must be moved
+# to the first tag that contains the linux/ layout before this manifest is used
+# for a submission (flathub-publish.yml repoints it automatically per release).
 # This copy is the reference used for the INITIAL Flathub submission; after the
 # app is live, flathub-publish.yml updates the manifest in the Flathub repo on
 # every release (repoints tag/commit, regenerates cargo-sources.json), so this
@@ -47,6 +50,11 @@ build-options:
 modules:
   - name: fodder
     buildsystem: simple
+    # The Rust workspace lives under linux/ (the repo root also holds the
+    # Android app). Building from that subdirectory keeps every build-command
+    # below relative to the workspace, exactly as before the split. CARGO_HOME
+    # is absolute, so the vendored crate set still resolves from the source root.
+    subdir: linux
     build-options:
       env:
         CARGO_NET_OFFLINE: 'true'

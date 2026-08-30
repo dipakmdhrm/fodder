@@ -50,5 +50,7 @@ modules:
       - install -Dm644 data/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg
         /app/share/icons/hicolor/scalable/apps/io.github.dipakmdhrm.Fodder.svg
     sources:
+      # Two levels up from packaging/flatpak/ is linux/ - the Cargo workspace
+      # root - so every build-command above stays relative to the workspace.
       - type: dir
         path: ../..
