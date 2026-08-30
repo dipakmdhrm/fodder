@@ -1,0 +1,9 @@
+# ktlint reads its rules from here. Matches the Kotlin official code style.
+root = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+insert_final_newline = true
+ktlint_standard_function-naming = disabled

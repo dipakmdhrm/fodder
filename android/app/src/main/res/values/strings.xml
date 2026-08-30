@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fodder</string>
+    <string name="channel_new_articles">New articles</string>
+    <string name="channel_new_articles_description">Posted when a subscribed feed gains articles.</string>
+    <!-- e.g. "3 new in Example Blog" -->
+    <string name="notification_new_articles">%1$d new in %2$s</string>
+</resources>
