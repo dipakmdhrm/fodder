@@ -131,6 +131,42 @@ viewer code, or a stale viewer will be launched.
 
 Per-user install without packaging: `linux/install.sh` / `linux/uninstall.sh [--purge]`.
 
+## Build artifact hygiene
+
+`linux/target/` grows without bound if nobody trims it. Cargo never garbage-collects that
+directory, so every dependency bump, feature change, or toolchain update emits a fresh
+hash-suffixed artifact and keeps the previous one forever. Five weeks of unmaintained
+development took this repo to 36 GB, almost all of it stale copies of binaries.
+
+Size any cleanup decision against two measured facts:
+
+- Building the workspace alone lands at about **1.4 GB**; a full check cycle (`build`, then `clippy --all-targets`, then `test --workspace`) settles at about **2.2 GB**. The `[profile.dev.package."*"]` override in `linux/Cargo.toml` is what keeps it there. Without it the build alone is 2.9 GB, because every dependency then carries full DWARF.
+- A full cold rebuild takes about **60 seconds**, so cleaning is cheap. Do not treat it as a last resort.
+
+After a session that ran cargo builds, check the size and report it when it exceeds
+**6 GB**. That is roughly 3x the full-cycle steady state, and means stale artifacts have
+piled up:
+
+```bash
+du -sh linux/target
+```
+
+Trim in this order:
+
+```bash
+rm -rf linux/target/debug/incremental   # regenerates on the next build; always safe
+cargo sweep --maxsize 4GB               # run from linux/; keeps newest, drops oldest
+cargo clean                             # full reset; about 60s to rebuild
+```
+
+Three things to get right:
+
+- Run `cargo-sweep` from `linux/`, never the repo root. There is no root `Cargo.toml`, so `cargo metadata` fails there with "manifest path does not exist".
+- Do not use `cargo sweep --installed` as routine cleanup. It keeps only artifacts built by the currently installed rustc, so right after a `rustup update` it discards every artifact rather than just the stale ones.
+- Always report how much was reclaimed. Never delete build output silently.
+
+---
+
 ## Development Conventions
 
 ### Continuous Integration
