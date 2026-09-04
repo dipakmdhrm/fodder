@@ -62,3 +62,10 @@ wiremock = "0.6"
 [profile.release]
 lto = "thin"
 strip = true
+
+# Dependencies build without debuginfo; workspace crates keep theirs in full.
+# Line coverage for our own sources is identical either way, but a debug binary
+# drops from ~196 MB to ~77 MB and a warm target/ from ~2.9 GB to ~1.4 GB.
+# Comment this out temporarily if you need to step into a dependency's frames.
+[profile.dev.package."*"]
+debug = false
