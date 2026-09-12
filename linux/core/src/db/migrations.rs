@@ -41,6 +41,21 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_articles_feed_unread ON articles(feed_id, is_read);
     CREATE INDEX idx_articles_published   ON articles(published DESC);
     "#,
+    // 0002 — tombstones for user-deleted articles.
+    //
+    // Deleting an article is not enough on its own: dedupe is INSERT OR IGNORE
+    // on UNIQUE(feed_id, guid), so an item still present in the feed document
+    // would simply be re-inserted (and re-notified) by the next poll. Recording
+    // the guid here lets the insert path skip it for good. The cascade means a
+    // feed's tombstones die with it, so resubscribing is a clean slate.
+    r#"
+    CREATE TABLE deleted_articles (
+        feed_id    INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+        guid       TEXT    NOT NULL,
+        deleted_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        PRIMARY KEY (feed_id, guid)
+    );
+    "#,
 ];
 
 /// Apply any migrations newer than the stored `user_version`.

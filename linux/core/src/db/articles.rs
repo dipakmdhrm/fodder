@@ -30,7 +30,9 @@ const SELECT: &str = "SELECT id, feed_id, guid, title, url, content, published, 
 /// Insert new articles for `feed_id`, deduping on `(feed_id, guid)`. Returns the
 /// row ids that were *actually inserted* (i.e. genuinely new) so the caller can
 /// notify only those. Already-seen items are silently ignored, so they never
-/// re-notify — even across daemon restarts. Runs in a single transaction.
+/// re-notify — even across daemon restarts. Items the user has deleted are
+/// skipped too, via the `deleted_articles` tombstones, so a delete survives
+/// every later poll. Runs in a single transaction.
 pub fn insert_new_articles(
     conn: &mut Connection,
     feed_id: i64,
@@ -42,7 +44,9 @@ pub fn insert_new_articles(
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO articles \
              (feed_id, guid, title, url, content, published) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6 \
+             WHERE NOT EXISTS (SELECT 1 FROM deleted_articles \
+                               WHERE feed_id = ?1 AND guid = ?2)",
         )?;
         for item in items {
             let changed = stmt.execute(params![
@@ -61,6 +65,39 @@ pub fn insert_new_articles(
     }
     tx.commit()?;
     Ok(new_ids)
+}
+
+/// Delete one article and tombstone its guid, so the next poll of its feed does
+/// not simply re-insert it. A missing id is a no-op, matching
+/// [`super::feeds::delete_feed`].
+pub fn delete_article(conn: &mut Connection, id: i64) -> Result<(), DbError> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT OR IGNORE INTO deleted_articles (feed_id, guid) \
+         SELECT feed_id, guid FROM articles WHERE id = ?1",
+        params![id],
+    )?;
+    tx.execute("DELETE FROM articles WHERE id = ?1", params![id])?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Delete every stored article for one feed, tombstoning each guid. The feed
+/// itself — and its subscription — is kept; use [`super::feeds::delete_feed`]
+/// to unsubscribe instead.
+///
+/// Deliberately takes a plain `feed_id` rather than [`mark_all_read`]'s
+/// `Option<i64>`: there is no "clear every feed at once" affordance in the UI.
+pub fn delete_articles_for(conn: &mut Connection, feed_id: i64) -> Result<(), DbError> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT OR IGNORE INTO deleted_articles (feed_id, guid) \
+         SELECT feed_id, guid FROM articles WHERE feed_id = ?1",
+        params![feed_id],
+    )?;
+    tx.execute("DELETE FROM articles WHERE feed_id = ?1", params![feed_id])?;
+    tx.commit()?;
+    Ok(())
 }
 
 /// Mark a single article read.
@@ -242,5 +279,82 @@ mod tests {
             2
         );
         assert_eq!(articles_for(db.conn(), None, 100).unwrap().len(), 2);
+    }
+
+    /// Counting tombstones directly — there is no public reader for them, and
+    /// the cascade is worth pinning.
+    fn tombstone_count(db: &Db) -> i64 {
+        db.conn()
+            .query_row("SELECT COUNT(*) FROM deleted_articles", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn delete_article_tombstones_guid() {
+        let (mut db, feed_id) = setup();
+        let items = vec![new_article("a", "A"), new_article("b", "B")];
+        let ids = insert_new_articles(db.conn_mut(), feed_id, &items).unwrap();
+
+        delete_article(db.conn_mut(), ids[0]).unwrap();
+        assert_eq!(
+            articles_for(db.conn(), Some(feed_id), 100).unwrap().len(),
+            1
+        );
+
+        // The whole point: re-polling the same feed document must not bring it
+        // back, and must not report it as new.
+        let again = insert_new_articles(db.conn_mut(), feed_id, &items).unwrap();
+        assert!(again.is_empty(), "a deleted article must not re-insert");
+        assert_eq!(
+            articles_for(db.conn(), Some(feed_id), 100).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn delete_articles_for_clears_feed() {
+        let (mut db, feed_id) = setup();
+        let items = vec![new_article("a", "A"), new_article("b", "B")];
+        insert_new_articles(db.conn_mut(), feed_id, &items).unwrap();
+
+        delete_articles_for(db.conn_mut(), feed_id).unwrap();
+        assert!(articles_for(db.conn(), Some(feed_id), 100)
+            .unwrap()
+            .is_empty());
+        assert_eq!(total_unread(db.conn()).unwrap(), 0);
+        // The subscription survives; only its articles are gone.
+        assert!(feeds::get_feed(db.conn(), feed_id).unwrap().is_some());
+
+        let again = insert_new_articles(db.conn_mut(), feed_id, &items).unwrap();
+        assert!(again.is_empty(), "a cleared feed must stay cleared");
+    }
+
+    #[test]
+    fn tombstone_is_scoped_to_its_feed() {
+        let (mut db, feed_id) = setup();
+        let other = feeds::insert_feed(db.conn(), "https://e.com/other", "O").unwrap();
+        let items = vec![new_article("a", "A")];
+        insert_new_articles(db.conn_mut(), feed_id, &items).unwrap();
+
+        delete_articles_for(db.conn_mut(), feed_id).unwrap();
+
+        // The same guid under a different feed is untouched and still inserts.
+        let ids = insert_new_articles(db.conn_mut(), other, &items).unwrap();
+        assert_eq!(ids.len(), 1, "another feed's guid must be unaffected");
+    }
+
+    #[test]
+    fn deleting_a_feed_clears_its_tombstones() {
+        let (mut db, feed_id) = setup();
+        insert_new_articles(db.conn_mut(), feed_id, &[new_article("a", "A")]).unwrap();
+        delete_articles_for(db.conn_mut(), feed_id).unwrap();
+        assert_eq!(tombstone_count(&db), 1);
+
+        feeds::delete_feed(db.conn(), feed_id).unwrap();
+        assert_eq!(
+            tombstone_count(&db),
+            0,
+            "tombstones cascade, so resubscribing starts clean"
+        );
     }
 }
