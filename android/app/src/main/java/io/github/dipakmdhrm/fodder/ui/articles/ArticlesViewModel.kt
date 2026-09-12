@@ -38,4 +38,7 @@ class ArticlesViewModel(private val repository: FeedRepository) : ViewModel() {
     fun open(articleId: Long) = viewModelScope.launch { repository.markRead(articleId) }
 
     fun toggleRead(article: ArticleEntity) = viewModelScope.launch { repository.markRead(article.id, !article.isRead) }
+
+    /** The list is Flow-backed, so the row disappears without a manual reload. */
+    fun delete(articleId: Long) = viewModelScope.launch { repository.deleteArticle(articleId) }
 }
