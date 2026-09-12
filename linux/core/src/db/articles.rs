@@ -30,7 +30,7 @@ const SELECT: &str = "SELECT id, feed_id, guid, title, url, content, published, 
 /// Insert new articles for `feed_id`, deduping on `(feed_id, guid)`. Returns the
 /// row ids that were *actually inserted* (i.e. genuinely new) so the caller can
 /// notify only those. Already-seen items are silently ignored, so they never
-/// re-notify — even across daemon restarts. Items the user has deleted are
+/// re-notify, even across daemon restarts. Items the user has deleted are
 /// skipped too, via the `deleted_articles` tombstones, so a delete survives
 /// every later poll. Runs in a single transaction.
 pub fn insert_new_articles(
@@ -83,7 +83,7 @@ pub fn delete_article(conn: &mut Connection, id: i64) -> Result<(), DbError> {
 }
 
 /// Delete every stored article for one feed, tombstoning each guid. The feed
-/// itself — and its subscription — is kept; use [`super::feeds::delete_feed`]
+/// itself, and its subscription, is kept; use [`super::feeds::delete_feed`]
 /// to unsubscribe instead.
 ///
 /// Deliberately takes a plain `feed_id` rather than [`mark_all_read`]'s
@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(articles_for(db.conn(), None, 100).unwrap().len(), 2);
     }
 
-    /// Counting tombstones directly — there is no public reader for them, and
+    /// Counting tombstones directly: there is no public reader for them, and
     /// the cascade is worth pinning.
     fn tombstone_count(db: &Db) -> i64 {
         db.conn()

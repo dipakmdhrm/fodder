@@ -34,13 +34,19 @@ A Cargo workspace, rooted at `linux/`, with three crates:
 |-------|------|----------------|
 | `core` (`fodder-core`) | library | Models, SQLite store + migrations, HTTP poller (conditional GET), feed discovery, config, IPC protocol. |
 | `fodderd` | binary | Headless daemon: tokio poll loop, shared SQLite (WAL), desktop notifications, single-instance IPC socket, system-tray icon, and on-demand viewer spawning. |
-| `fodder` | binary | GTK4 + libadwaita viewer: 3-pane UI (feeds / articles / reader) with a sanitized light reader, an optional locked-down WebKit view, discovery-driven subscribe, and a header-bar menu (Preferences / About). |
+| `fodder` | binary | GTK4 + libadwaita viewer: 3-pane UI (feeds / articles / reader) with a sanitized light reader, an optional locked-down WebKit view, discovery-driven subscribe, right-click menus for tidying feeds and articles, and a header-bar menu (Preferences / About). |
 
 **Process model.** `fodderd` is the primary process and stays resident. The
 `fodder` viewer is launched on demand and, by default, hidden and kept resident
 on close for an instant reopen (or, with **Low memory mode** enabled, terminated
 on close to free its memory). Exactly one daemon and one viewer are enforced via
 a Unix socket in `$XDG_RUNTIME_DIR`, which also carries daemon↔viewer IPC.
+
+**Pruning what you keep.** Right-click an article for **Delete this item**, or a
+feed for **Delete all items** to clear its stored articles while staying
+subscribed. Both ask for confirmation first, and both stick: Fodder remembers
+what you deleted, so a later refresh will not quietly bring it back. Deleting
+the feed itself forgets all of that, so resubscribing starts fresh.
 
 **Storage.**
 - Config: `~/.config/fodder/config.toml`
@@ -164,6 +170,8 @@ A standalone reader for the phone: subscribe, poll in the background, read.
 - Feed list with unread counts, an article list that marks read on open, and a
   reader with the same two modes as the desktop: a sanitized light render, or
   the live page in a locked-down WebView (JavaScript off, no storage).
+- Delete a single article, or clear one feed's articles without
+  unsubscribing. Deletions stick - a later refresh will not bring them back.
 - Background refresh through WorkManager, with batched per-feed notifications.
 - Material 3 with dynamic color.
 

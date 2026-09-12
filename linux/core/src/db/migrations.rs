@@ -41,7 +41,7 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_articles_feed_unread ON articles(feed_id, is_read);
     CREATE INDEX idx_articles_published   ON articles(published DESC);
     "#,
-    // 0002 — tombstones for user-deleted articles.
+    // 0002: tombstones for user-deleted articles.
     //
     // Deleting an article is not enough on its own: dedupe is INSERT OR IGNORE
     // on UNIQUE(feed_id, guid), so an item still present in the feed document
