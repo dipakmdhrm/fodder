@@ -10,6 +10,8 @@ see [docs/ANDROID.md](docs/ANDROID.md).
 
 ## Unreleased
 
+## 0.8.0
+
 ### Added
 - **Delete articles you do not want to keep.** Right-click an article for
   **Delete this item**, or a feed for **Delete all items**, which clears that
