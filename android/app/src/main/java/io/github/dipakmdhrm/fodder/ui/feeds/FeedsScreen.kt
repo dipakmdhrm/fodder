@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.dipakmdhrm.fodder.appViewModelFactory
 import io.github.dipakmdhrm.fodder.data.db.FeedWithUnread
+import io.github.dipakmdhrm.fodder.ui.components.ConfirmDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +65,8 @@ fun FeedsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddDialog by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<FeedWithUnread?>(null) }
+    var clearing by remember { mutableStateOf<FeedWithUnread?>(null) }
+    var deleting by remember { mutableStateOf<FeedWithUnread?>(null) }
 
     LaunchedEffect(message) {
         message?.let {
@@ -115,7 +118,8 @@ fun FeedsScreen(
                         onRefresh = { viewModel.refreshOne(feed.id) },
                         onMarkRead = { viewModel.markFeedRead(feed.id) },
                         onRename = { renaming = feed },
-                        onDelete = { viewModel.delete(feed.id) },
+                        onClearItems = { clearing = feed },
+                        onDelete = { deleting = feed },
                     )
                 }
             }
@@ -144,6 +148,34 @@ fun FeedsScreen(
             onDismiss = { renaming = null },
         )
     }
+
+    clearing?.let { feed ->
+        ConfirmDialog(
+            title = "Delete all items?",
+            body =
+                "This deletes every stored article from this feed and keeps the " +
+                    "subscription. They will not come back on the next refresh.",
+            confirmLabel = "Delete all",
+            onConfirm = {
+                viewModel.clearItems(feed.id)
+                clearing = null
+            },
+            onDismiss = { clearing = null },
+        )
+    }
+
+    deleting?.let { feed ->
+        ConfirmDialog(
+            title = "Delete feed?",
+            body = "This unsubscribes the feed and deletes its stored articles.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                viewModel.delete(feed.id)
+                deleting = null
+            },
+            onDismiss = { deleting = null },
+        )
+    }
 }
 
 @Composable
@@ -153,6 +185,7 @@ private fun FeedRow(
     onRefresh: () -> Unit,
     onMarkRead: () -> Unit,
     onRename: () -> Unit,
+    onClearItems: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -192,6 +225,13 @@ private fun FeedRow(
                         onClick = {
                             menuOpen = false
                             onRename()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete all items") },
+                        onClick = {
+                            menuOpen = false
+                            onClearItems()
                         },
                     )
                     DropdownMenuItem(

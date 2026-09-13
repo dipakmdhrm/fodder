@@ -75,3 +75,34 @@ data class FeedWithUnread(
     val lastError: String?,
     val unreadCount: Int,
 )
+
+/**
+ * A tombstone for an article the user deleted.
+ *
+ * Mirrors the `deleted_articles` table in `core/src/db/migrations.rs`. Deleting
+ * a row from [ArticleEntity] is not enough on its own: dedupe is IGNORE against
+ * the unique (feedId, guid) index, so an item still present in the feed
+ * document would be re-inserted - and re-notified - by the next poll. Recording
+ * the guid here lets the insert path skip it for good.
+ *
+ * The cascade means a feed's tombstones die with it, so unsubscribing and
+ * resubscribing starts clean. [feedId] is the leftmost primary-key column,
+ * which is what satisfies Room's index requirement for a foreign key.
+ */
+@Entity(
+    tableName = "deleted_articles",
+    primaryKeys = ["feedId", "guid"],
+    foreignKeys = [
+        ForeignKey(
+            entity = FeedEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["feedId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class DeletedArticleEntity(
+    val feedId: Long,
+    val guid: String,
+    val deletedAt: Long = System.currentTimeMillis(),
+)

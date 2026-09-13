@@ -11,6 +11,13 @@ see [docs/ANDROID.md](docs/ANDROID.md).
 ## Unreleased
 
 ### Added
+- **Delete articles you do not want to keep.** Right-click an article for
+  **Delete this item**, or a feed for **Delete all items**, which clears that
+  feed's stored articles while keeping the subscription. Both are confirmed
+  first. Deletions are remembered, so a later refresh will not quietly restore
+  an item that is still listed in the feed; deleting the feed itself forgets
+  that record, so resubscribing starts fresh. Both apps gained this, along with
+  the confirmation Android's own **Delete feed** had been missing.
 - **An Android version of Fodder** lives in `android/`: a standalone Kotlin +
   Jetpack Compose reader (Android 8.0+) with feed discovery, background refresh
   through WorkManager, batched per-feed notifications, and the same two reading

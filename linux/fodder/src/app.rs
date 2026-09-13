@@ -456,6 +456,11 @@ fn setup_context_menus(this: &Rc<App>) {
             app.remove_feed(id);
         }
     });
+    add_action(&group, "clearitems", this, |app| {
+        if let Some(id) = app.ctx_feed.get() {
+            app.clear_feed_articles(id);
+        }
+    });
     // Action groups go on the window so the pane-parented popovers can resolve
     // them (action lookup walks up from the popover).
     this.window.insert_action_group("feedctx", Some(&group));
@@ -495,6 +500,7 @@ fn setup_context_menus(this: &Rc<App>) {
             app.window.clipboard().set_text(&url);
         }
     });
+    add_action(&group, "delete", this, |app| app.delete_ctx_article());
     this.window.insert_action_group("artctx", Some(&group));
 
     let gesture = gtk::GestureClick::new();
@@ -553,6 +559,7 @@ fn build_feed_menu(is_real_feed: bool) -> gio::Menu {
     menu.append(Some("Mark all as read"), Some("feedctx.markread"));
     if is_real_feed {
         menu.append(Some("Rename"), Some("feedctx.rename"));
+        menu.append(Some("Delete all items"), Some("feedctx.clearitems"));
         menu.append(Some("Delete"), Some("feedctx.remove"));
         menu.append(Some("Copy feed URL"), Some("feedctx.copyurl"));
     }
@@ -569,6 +576,7 @@ fn build_article_menu(is_read: bool) -> gio::Menu {
     menu.append(Some(toggle_label), Some("artctx.toggleread"));
     menu.append(Some("Open in browser"), Some("artctx.openbrowser"));
     menu.append(Some("Copy link"), Some("artctx.copylink"));
+    menu.append(Some("Delete this item"), Some("artctx.delete"));
     menu
 }
 
@@ -1423,20 +1431,39 @@ impl App {
         }
     }
 
-    fn remove_feed(self: &Rc<Self>, feed_id: i64) {
-        let dialog = adw::AlertDialog::new(
-            Some("Delete feed?"),
-            Some("This unsubscribes the feed and deletes its stored articles."),
-        );
+    /// Present a destructive-action confirmation, running `on_confirm` only if
+    /// the user goes through with it. The shared shape behind the three delete
+    /// actions: cancel is both the default and the close response, so Escape
+    /// and a stray Enter are always the safe outcome.
+    fn confirm_destructive(
+        self: &Rc<Self>,
+        heading: &str,
+        body: &str,
+        confirm_label: &str,
+        on_confirm: impl Fn(&Rc<Self>) + 'static,
+    ) {
+        let dialog = adw::AlertDialog::new(Some(heading), Some(body));
         dialog.add_response("cancel", "Cancel");
-        dialog.add_response("remove", "Delete");
-        dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
+        dialog.add_response("confirm", confirm_label);
+        dialog.set_response_appearance("confirm", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
 
         let this = self.clone();
         dialog.connect_response(None, move |_, response| {
-            if response == "remove" {
+            if response == "confirm" {
+                on_confirm(&this);
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    fn remove_feed(self: &Rc<Self>, feed_id: i64) {
+        self.confirm_destructive(
+            "Delete feed?",
+            "This unsubscribes the feed and deletes its stored articles.",
+            "Delete",
+            move |this| {
                 let inner = this.clone();
                 runtime::run_db(
                     this.rt.handle(),
@@ -1451,9 +1478,73 @@ impl App {
                         Err(e) => tracing::warn!("remove feed failed: {e}"),
                     },
                 );
-            }
-        });
-        dialog.present(Some(&self.window));
+            },
+        );
+    }
+
+    /// Delete the right-clicked article. Its guid is tombstoned in the same
+    /// transaction, so the next poll of that feed will not bring it back.
+    fn delete_ctx_article(self: &Rc<Self>) {
+        let Some(id) = self.ctx_article.get() else {
+            return;
+        };
+        self.confirm_destructive(
+            "Delete this item?",
+            "This removes the article. It will not come back on the next refresh.",
+            "Delete",
+            move |this| {
+                let inner = this.clone();
+                runtime::run_db(
+                    this.rt.handle(),
+                    this.db.clone(),
+                    move |c| articles::delete_article(c, id),
+                    move |res| match res {
+                        Ok(()) => {
+                            // Drop the reader if it was showing what we deleted.
+                            if inner.current_article.get() == Some(id) {
+                                inner.current_article.set(None);
+                            }
+                            inner.load_feeds(Some(Target {
+                                feed: inner.selected_feed.get(),
+                                article: inner.current_article.get(),
+                                webkit: false,
+                            }));
+                        }
+                        Err(e) => tracing::warn!("delete article failed: {e}"),
+                    },
+                );
+            },
+        );
+    }
+
+    /// Delete every stored article for `feed_id`, keeping the subscription.
+    /// Each guid is tombstoned, so a refresh will not repopulate the feed.
+    fn clear_feed_articles(self: &Rc<Self>, feed_id: i64) {
+        self.confirm_destructive(
+            "Delete all items?",
+            "This deletes every stored article from this feed and keeps the \
+             subscription. They will not come back on the next refresh.",
+            "Delete all",
+            move |this| {
+                let inner = this.clone();
+                runtime::run_db(
+                    this.rt.handle(),
+                    this.db.clone(),
+                    move |c| articles::delete_articles_for(c, feed_id),
+                    move |res| match res {
+                        Ok(()) => {
+                            inner.current_article.set(None);
+                            inner.load_feeds(Some(Target {
+                                feed: Some(feed_id),
+                                article: None,
+                                webkit: false,
+                            }));
+                        }
+                        Err(e) => tracing::warn!("clear feed articles failed: {e}"),
+                    },
+                );
+            },
+        );
     }
 
     /// Load the feed's current title, then show the rename dialog pre-filled.

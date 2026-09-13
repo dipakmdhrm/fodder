@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -129,4 +130,83 @@ interface ArticleDao {
 
     @Query("SELECT * FROM articles WHERE id IN (:ids)")
     suspend fun byIds(ids: List<Long>): List<ArticleEntity>
+
+    /** Guids the user has deleted from this feed - see [DeletedArticleEntity]. */
+    @Query("SELECT guid FROM deleted_articles WHERE feedId = :feedId")
+    suspend fun deletedGuids(feedId: Long): List<String>
+
+    /**
+     * Insert freshly-parsed items, skipping both already-stored ones and ones
+     * the user deleted.
+     *
+     * The Android counterpart of the desktop's tombstone-guarded
+     * `INSERT OR IGNORE` (`core/src/db/articles.rs::insert_new_articles`). Room
+     * cannot express the tombstone check inside `@Insert`, so the filter runs
+     * here instead. The returned list keeps [insertAll]'s contract, so callers
+     * still count genuinely-new rows and a deleted item can never re-notify.
+     */
+    @Transaction
+    suspend fun insertNew(
+        feedId: Long,
+        articles: List<ArticleEntity>,
+    ): List<Long> {
+        val tombstoned = deletedGuids(feedId).toSet()
+        return insertAll(articles.filterNot { it.guid in tombstoned })
+    }
+
+    @Query(
+        """
+        INSERT OR IGNORE INTO deleted_articles (feedId, guid, deletedAt)
+        SELECT feedId, guid, :now FROM articles WHERE id = :id
+        """,
+    )
+    suspend fun tombstoneArticle(
+        id: Long,
+        now: Long,
+    )
+
+    @Query("DELETE FROM articles WHERE id = :id")
+    suspend fun deleteArticleRow(id: Long)
+
+    /**
+     * Delete one article and tombstone its guid, so the next poll of its feed
+     * does not simply re-insert it. Mirrors
+     * `core/src/db/articles.rs::delete_article`.
+     */
+    @Transaction
+    suspend fun deleteArticle(
+        id: Long,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        tombstoneArticle(id, now)
+        deleteArticleRow(id)
+    }
+
+    @Query(
+        """
+        INSERT OR IGNORE INTO deleted_articles (feedId, guid, deletedAt)
+        SELECT feedId, guid, :now FROM articles WHERE feedId = :feedId
+        """,
+    )
+    suspend fun tombstoneFeedArticles(
+        feedId: Long,
+        now: Long,
+    )
+
+    @Query("DELETE FROM articles WHERE feedId = :feedId")
+    suspend fun deleteArticlesForFeed(feedId: Long)
+
+    /**
+     * Delete every stored article for one feed, tombstoning each guid. The
+     * subscription is kept - use [FeedDao.delete] to unsubscribe. Mirrors
+     * `core/src/db/articles.rs::delete_articles_for`.
+     */
+    @Transaction
+    suspend fun clearFeed(
+        feedId: Long,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        tombstoneFeedArticles(feedId, now)
+        deleteArticlesForFeed(feedId)
+    }
 }

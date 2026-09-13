@@ -9,6 +9,7 @@ import io.github.dipakmdhrm.fodder.data.db.FodderDatabase
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -163,5 +164,67 @@ class ArticleDaoTest {
             dao.reschedule(later, nextPollAt = 10_000)
 
             assertEquals(listOf(soon), dao.due(now = 500).map { it.id })
+        }
+
+    @Test
+    fun `a deleted article is not re-inserted by the next poll`() =
+        runTest {
+            val feedId = seedFeed()
+            val dao = db.articleDao()
+            val rows = listOf(article(feedId, "g1"), article(feedId, "g2"))
+            val ids = dao.insertNew(feedId, rows)
+
+            dao.deleteArticle(ids.first { it != -1L })
+            assertEquals(1, dao.unreadCount())
+
+            // The whole point: the feed document still carries the item, and it
+            // must stay gone - and must not count as new.
+            val again = dao.insertNew(feedId, rows)
+            assertEquals(0, again.count { it != -1L })
+            assertEquals(1, dao.unreadCount())
+        }
+
+    @Test
+    fun `clearing a feed empties it and blocks re-insert`() =
+        runTest {
+            val feedId = seedFeed()
+            val dao = db.articleDao()
+            val rows = listOf(article(feedId, "g1"), article(feedId, "g2"))
+            dao.insertNew(feedId, rows)
+
+            dao.clearFeed(feedId)
+            assertEquals(0, dao.unreadCount())
+            // The subscription survives; only its articles are gone.
+            assertNotNull(db.feedDao().byId(feedId))
+
+            val again = dao.insertNew(feedId, rows)
+            assertEquals(0, again.count { it != -1L })
+        }
+
+    @Test
+    fun `a tombstone only applies to its own feed`() =
+        runTest {
+            val feedId = seedFeed()
+            val other = seedFeed("https://e.com/other")
+            val dao = db.articleDao()
+            dao.insertNew(feedId, listOf(article(feedId, "g1")))
+
+            dao.clearFeed(feedId)
+
+            val ids = dao.insertNew(other, listOf(article(other, "g1")))
+            assertEquals(1, ids.count { it != -1L })
+        }
+
+    @Test
+    fun `deleting a feed clears its tombstones`() =
+        runTest {
+            val feedId = seedFeed()
+            val dao = db.articleDao()
+            dao.insertNew(feedId, listOf(article(feedId, "g1")))
+            dao.clearFeed(feedId)
+            assertEquals(listOf("g1"), dao.deletedGuids(feedId))
+
+            db.feedDao().delete(feedId)
+            assertEquals(emptyList<String>(), dao.deletedGuids(feedId))
         }
 }

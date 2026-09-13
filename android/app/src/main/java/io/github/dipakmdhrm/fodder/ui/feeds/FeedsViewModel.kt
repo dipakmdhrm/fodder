@@ -77,6 +77,9 @@ class FeedsViewModel(private val repository: FeedRepository) : ViewModel() {
 
     fun delete(feedId: Long) = viewModelScope.launch { repository.delete(feedId) }
 
+    /** Clear a feed's stored articles without unsubscribing from it. */
+    fun clearItems(feedId: Long) = viewModelScope.launch { repository.clearFeedArticles(feedId) }
+
     /** Resolve a typed URL, subscribing straight away when it is itself a feed. */
     fun resolve(url: String) {
         _addState.value = AddFeedState.Resolving

@@ -69,6 +69,12 @@ class FeedRepository(
 
     suspend fun delete(id: Long) = feedDao.delete(id)
 
+    /** Delete one article, tombstoning its guid so a poll cannot restore it. */
+    suspend fun deleteArticle(id: Long) = articleDao.deleteArticle(id)
+
+    /** Delete a feed's stored articles, keeping the subscription. */
+    suspend fun clearFeedArticles(feedId: Long) = articleDao.clearFeed(feedId)
+
     suspend fun unreadCount() = articleDao.unreadCount()
 
     /** Subscribe to an already-resolved feed URL, then poll it immediately. */
@@ -147,8 +153,9 @@ class FeedRepository(
                         )
                     }
                 // -1 marks a row the unique (feedId, guid) index rejected, i.e.
-                // an item we have already seen.
-                val inserted = articleDao.insertAll(rows).filter { it != -1L }
+                // an item we have already seen. insertNew additionally drops
+                // anything the user deleted, so a delete survives every poll.
+                val inserted = articleDao.insertNew(feed.id, rows).filter { it != -1L }
 
                 // Only fill the title from the feed document when the local one
                 // is empty, so a title the user set is never clobbered.
